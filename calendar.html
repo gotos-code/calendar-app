@@ -199,7 +199,9 @@ async function loadEvents() {
 }
 
 function eventsOnDay(dateStr) {
-  return periodEvents.filter(ev => ev.start_at.slice(0, 10) === dateStr);
+  // Bucket by the browser's local calendar date, not the raw UTC ISO string's
+  // date portion (which shifts back a day for any local time before 9am JST).
+  return periodEvents.filter(ev => ymd(new Date(ev.start_at)) === dateStr);
 }
 
 function ownerName(p) {
@@ -235,7 +237,7 @@ async function loadMiniDots() {
     .gte("start_at", start.toISOString())
     .lt("start_at", end.toISOString());
 
-  miniEventDots = new Set(error ? [] : data.map(r => r.start_at.slice(0, 10)));
+  miniEventDots = new Set(error ? [] : data.map(r => ymd(new Date(r.start_at))));
   renderMiniCal();
 }
 
@@ -458,12 +460,13 @@ document.getElementById("weekDays").addEventListener("click", (e) => {
   if (ev) openFormPanel(ev, null);
 });
 
-// Drag-to-select a start/end time range (like Google Calendar), snapped to 15 minutes.
+// Drag-to-select a start/end time range (like Google Calendar), snapped to 30 minutes.
+// (The time input fields themselves still allow 15-minute steps for fine-tuning.)
 // A plain click (no real drag) still works and opens the form with a default 30-min slot.
 let weekDrag = null;
 
 function clampPx(v) { return Math.max(0, Math.min(TOTAL_PX, v)); }
-function snap15(px) { const unit = HOUR_PX / 4; return Math.round(px / unit) * unit; }
+function snapDrag(px) { const unit = HOUR_PX / 2; return Math.round(px / unit) * unit; }
 function pxToTime(px) {
   const totalMinutes = Math.round((px / HOUR_PX) * 60);
   const hour = Math.min(HOUR_START + Math.floor(totalMinutes / 60), HOUR_END);
@@ -505,9 +508,9 @@ document.addEventListener("mouseup", (e) => {
 
   const rect = col.getBoundingClientRect();
   const endY = clampPx(e.clientY - rect.top);
-  let y1 = snap15(Math.min(startY, endY));
-  let y2 = snap15(Math.max(startY, endY));
-  if (!moved || y2 - y1 < snap15(1)) y2 = y1 + HOUR_PX / 2; // plain click -> default 30-min slot
+  let y1 = snapDrag(Math.min(startY, endY));
+  let y2 = snapDrag(Math.max(startY, endY));
+  if (!moved || y2 - y1 < 1) y2 = y1 + HOUR_PX / 2; // plain click -> default 30-min slot
 
   openFormPanel(null, dateStr, pxToTime(y1), pxToTime(y2));
 });
