@@ -570,6 +570,9 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
   document.getElementById("formMsg").textContent = "";
 
   const canEdit = !ev || ev.owner_id === me.id || me.role === "admin";
+  // Operators can create/edit their own appointment entries but can never
+  // delete them (not even their own) — only an admin can remove one.
+  const canDelete = canEdit && me.role !== "operator";
   document.getElementById("formOwner").textContent = ev
     ? `作成者: ${ownerName(ev.owner)}`
     : `作成者: ${ownerName(me)}`;
@@ -597,7 +600,7 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
   toggleAllDayFields();
 
   const deleteBtn = document.getElementById("deleteBtn");
-  deleteBtn.hidden = !(ev && canEdit);
+  deleteBtn.hidden = !(ev && canDelete);
 
   document.querySelectorAll("#eventForm input, #eventForm textarea, #eventForm button")
     .forEach(el => el.disabled = !canEdit && !!ev);
