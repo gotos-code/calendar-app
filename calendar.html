@@ -65,7 +65,6 @@
     <!-- Week view: weekdays only, 8:00-21:00 time grid -->
     <div id="weekView">
       <div class="week-header" id="weekHeader"></div>
-      <div class="week-allday" id="weekAllDay"></div>
       <div class="week-body">
         <div class="week-hour-labels" id="weekHourLabels"></div>
         <div class="week-days" id="weekDays"></div>
@@ -396,14 +395,6 @@ function renderWeek() {
     </div>
   `).join("");
 
-  document.getElementById("weekAllDay").innerHTML = `<div class="week-allday-label">終日</div>` + days.map(d => {
-    const dayStr = ymd(d);
-    const allDayEvents = eventsOnDay(dayStr).filter(ev => ev.all_day);
-    return `<div class="week-allday-cell" data-date="${dayStr}">${allDayEvents.map(ev => `
-      <div class="chip ${ev.event_type}" data-event-id="${ev.id}" title="${ownerName(ev.owner)} - ${ev.title}">${ev.title}</div>
-    `).join("")}</div>`;
-  }).join("");
-
   const hourLabels = [];
   for (let h = HOUR_START; h < HOUR_END; h++) {
     hourLabels.push(`<div class="week-hour-label" style="top:${(h - HOUR_START) * HOUR_PX}px">${h}:00</div>`);
@@ -414,13 +405,30 @@ function renderWeek() {
 
   document.getElementById("weekDays").innerHTML = days.map(d => {
     const dayStr = ymd(d);
-    const timedEvents = eventsOnDay(dayStr).filter(ev => !ev.all_day);
-    const laidOut = layoutDayEvents(timedEvents);
+    const dayEvents = eventsOnDay(dayStr);
+    const allDayEvents = dayEvents.filter(ev => ev.all_day);
+    const laidOut = layoutDayEvents(dayEvents.filter(ev => !ev.all_day));
     return `<div class="week-day-col ${dayStr === todayStr ? "today" : ""}" style="height:${TOTAL_PX}px" data-date="${dayStr}">
       ${renderTickLines()}
+      ${allDayEvents.map((ev, i) => renderAllDayBand(ev, i, allDayEvents.length)).join("")}
       ${laidOut.map(ev => renderWeekEventBlock(ev)).join("")}
     </div>`;
   }).join("");
+}
+
+// All-day events have no specific time, so instead of a separate row above
+// the grid, they render as a full-height (8:00-21:00) band inside the day's
+// own column, behind the timed event blocks.
+function renderAllDayBand(ev, index, total) {
+  const width = 100 / total;
+  const left = index * width;
+  return `
+    <div class="week-allday-band ${ev.event_type}" data-event-id="${ev.id}"
+         style="left:calc(${left}% + 2px); width:calc(${width}% - 4px);"
+         title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
+      <span class="wab-label">${ev.title}</span>
+    </div>
+  `;
 }
 
 function renderTickLines() {
@@ -442,19 +450,8 @@ document.getElementById("weekHeader").addEventListener("click", (e) => {
   if (cell) openDayPanelFromCell(cell.dataset.date);
 });
 
-document.getElementById("weekAllDay").addEventListener("click", (e) => {
-  const chip = e.target.closest(".chip");
-  if (chip) {
-    const ev = periodEvents.find(x => x.id === chip.dataset.eventId);
-    if (ev) openFormPanel(ev, null);
-    return;
-  }
-  const cell = e.target.closest(".week-allday-cell");
-  if (cell) openDayPanelFromCell(cell.dataset.date);
-});
-
 document.getElementById("weekDays").addEventListener("click", (e) => {
-  const block = e.target.closest(".week-event-block");
+  const block = e.target.closest(".week-event-block, .week-allday-band");
   if (!block) return;
   const ev = periodEvents.find(x => x.id === block.dataset.eventId);
   if (ev) openFormPanel(ev, null);
@@ -475,7 +472,7 @@ function pxToTime(px) {
 }
 
 document.getElementById("weekDays").addEventListener("mousedown", (e) => {
-  if (e.target.closest(".week-event-block")) return;
+  if (e.target.closest(".week-event-block, .week-allday-band")) return;
   const col = e.target.closest(".week-day-col");
   if (!col) return;
   e.preventDefault();
