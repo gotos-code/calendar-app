@@ -135,7 +135,7 @@ async function loadMonthEvents() {
   const { start, end } = gridRange(viewDate);
   const { data, error } = await sb
     .from("events")
-    .select("*, owner:profiles(display_name, email)")
+    .select("*, owner:profiles(last_name, first_name, company_name, email)")
     .gte("start_at", start.toISOString())
     .lt("start_at", end.toISOString())
     .order("start_at", { ascending: true });
@@ -150,6 +150,12 @@ async function loadMonthEvents() {
 
 function eventsOnDay(dateStr) {
   return monthEvents.filter(ev => ev.start_at.slice(0, 10) === dateStr);
+}
+
+function ownerName(p) {
+  if (!p) return "";
+  const name = [p.last_name, p.first_name].filter(Boolean).join(" ");
+  return name || p.email || "";
 }
 
 function fmtTime(iso) {
@@ -179,7 +185,7 @@ function renderGrid() {
         <div class="day-num">${d.getDate()}</div>
         ${shown.map(ev => `
           <div class="chip ${ev.event_type}" data-event-id="${ev.id}"
-               title="${ev.owner?.display_name || ev.owner?.email || ""} - ${ev.title}">
+               title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
             ${ev.all_day ? "" : fmtTime(ev.start_at) + " "}${ev.title}
           </div>
         `).join("")}
@@ -204,7 +210,7 @@ function openDayPanel(dateStr) {
         <div class="ev-title">${ev.title}</div>
         <div class="ev-meta">
           ${ev.all_day ? "終日" : fmtTime(ev.start_at) + (ev.end_at ? " - " + fmtTime(ev.end_at) : "")}
-          ・${ev.owner?.display_name || ev.owner?.email || "unknown"}
+          ・${ownerName(ev.owner)}${ev.owner?.company_name ? "(" + ev.owner.company_name + ")" : ""}
           ${ev.location ? "・" + ev.location : ""}
         </div>
       </div>
@@ -225,8 +231,8 @@ function openFormPanel(ev, dateStr) {
 
   const canEdit = !ev || ev.owner_id === me.id || me.is_admin;
   document.getElementById("formOwner").textContent = ev
-    ? `作成者: ${ev.owner?.display_name || ev.owner?.email || ""}`
-    : `作成者: ${me.display_name || me.email}`;
+    ? `作成者: ${ownerName(ev.owner)}`
+    : `作成者: ${ownerName(me)}`;
 
   document.querySelector(`input[name="event_type"][value="${ev ? ev.event_type : "personal"}"]`).checked = true;
   document.getElementById("f_title").value = ev ? ev.title : "";
@@ -366,7 +372,7 @@ document.getElementById("todayBtn").addEventListener("click", async () => {
 (async () => {
   me = await requireApprovedSession();
   if (!me) return;
-  document.getElementById("whoami").textContent = me.display_name || me.email;
+  document.getElementById("whoami").textContent = ownerName(me);
   if (me.is_admin) document.getElementById("adminLink").hidden = false;
   await loadMonthEvents();
   renderGrid();

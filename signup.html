@@ -14,8 +14,16 @@
     <h1>Calendar 新規登録</h1>
     <form id="form">
       <div class="field">
-        <label for="name">お名前</label>
-        <input type="text" id="name" required autocomplete="name">
+        <label for="company_name">会社名</label>
+        <input type="text" id="company_name" required autocomplete="organization">
+      </div>
+      <div class="field">
+        <label for="last_name">姓</label>
+        <input type="text" id="last_name" required autocomplete="family-name">
+      </div>
+      <div class="field">
+        <label for="first_name">名</label>
+        <input type="text" id="first_name" required autocomplete="given-name">
       </div>
       <div class="field">
         <label for="email">メールアドレス</label>
@@ -40,14 +48,16 @@ document.getElementById("form").addEventListener("submit", async (e) => {
   msg.textContent = "";
   btn.disabled = true;
 
-  const name = document.getElementById("name").value.trim();
+  const company_name = document.getElementById("company_name").value.trim();
+  const last_name = document.getElementById("last_name").value.trim();
+  const first_name = document.getElementById("first_name").value.trim();
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value;
 
   const { data, error } = await sb.auth.signUp({
     email,
     password,
-    options: { data: { display_name: name } }
+    options: { data: { company_name, last_name, first_name } }
   });
 
   if (error) {

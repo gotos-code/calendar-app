@@ -22,6 +22,7 @@
   <table class="admin-table">
     <thead>
       <tr>
+        <th>会社名</th>
         <th>氏名</th>
         <th>メールアドレス</th>
         <th>登録日</th>
@@ -49,13 +50,14 @@ async function loadRows() {
 
   if (error) {
     document.getElementById("rows").innerHTML =
-      `<tr><td colspan="6">読み込みに失敗しました: ${error.message}</td></tr>`;
+      `<tr><td colspan="7">読み込みに失敗しました: ${error.message}</td></tr>`;
     return;
   }
 
   document.getElementById("rows").innerHTML = profiles.map(p => `
     <tr>
-      <td>${p.display_name || "(未設定)"}</td>
+      <td>${p.company_name || "(未設定)"}</td>
+      <td>${[p.last_name, p.first_name].filter(Boolean).join(" ") || "(未設定)"}</td>
       <td>${p.email}</td>
       <td>${fmtDate(p.created_at)}</td>
       <td><span class="pill ${p.approved ? "yes" : "no"}">${p.approved ? "承認済み" : "未承認"}</span></td>
@@ -97,7 +99,8 @@ document.getElementById("rows").addEventListener("click", async (e) => {
       '<p class="msg error">このページは管理者のみ閲覧できます。</p>';
     return;
   }
-  document.getElementById("whoami").textContent = me.display_name || me.email;
+  document.getElementById("whoami").textContent =
+    [me.last_name, me.first_name].filter(Boolean).join(" ") || me.email;
   await loadRows();
 })();
 </script>
