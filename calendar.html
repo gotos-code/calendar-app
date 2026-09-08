@@ -92,7 +92,7 @@
     <h2 id="formTitle">予定を追加</h2>
     <div class="panel-sub" id="formOwner"></div>
     <form id="eventForm">
-      <div class="field">
+      <div class="field" id="typeField">
         <label>種類</label>
         <div class="type-toggle">
           <label class="opt-personal">
@@ -106,8 +106,8 @@
         </div>
       </div>
       <div class="field">
-        <label for="f_title">タイトル</label>
-        <input type="text" id="f_title" required>
+        <label for="f_title" id="titleLabel">タイトル</label>
+        <input type="text" id="f_title">
       </div>
       <div class="checkbox-row">
         <input type="checkbox" id="f_allday">
@@ -119,15 +119,11 @@
       </div>
       <div class="field" id="f_start_time_wrap">
         <label for="f_start_time">開始時刻</label>
-        <input type="time" id="f_start_time">
+        <input type="time" id="f_start_time" step="900">
       </div>
       <div class="field" id="f_end_time_wrap">
         <label for="f_end_time">終了時刻(任意)</label>
-        <input type="time" id="f_end_time">
-      </div>
-      <div class="field">
-        <label for="f_location">場所(任意)</label>
-        <input type="text" id="f_location">
+        <input type="time" id="f_end_time" step="900">
       </div>
       <div class="field">
         <label for="f_memo">メモ(任意)</label>
@@ -419,9 +415,20 @@ function renderWeek() {
     const timedEvents = eventsOnDay(dayStr).filter(ev => !ev.all_day);
     const laidOut = layoutDayEvents(timedEvents);
     return `<div class="week-day-col ${dayStr === todayStr ? "today" : ""}" style="height:${TOTAL_PX}px" data-date="${dayStr}">
+      ${renderTickLines()}
       ${laidOut.map(ev => renderWeekEventBlock(ev)).join("")}
     </div>`;
   }).join("");
+}
+
+function renderTickLines() {
+  let html = "";
+  for (let h = HOUR_START; h < HOUR_END; h++) {
+    const top = (h - HOUR_START) * HOUR_PX;
+    html += `<div class="hour-line" style="top:${top}px"></div>`;
+    html += `<div class="half-hour-line" style="top:${top + HOUR_PX / 2}px"></div>`;
+  }
+  return html;
 }
 
 function openDayPanelFromCell(dateStr) {
@@ -446,20 +453,63 @@ document.getElementById("weekAllDay").addEventListener("click", (e) => {
 
 document.getElementById("weekDays").addEventListener("click", (e) => {
   const block = e.target.closest(".week-event-block");
-  if (block) {
-    const ev = periodEvents.find(x => x.id === block.dataset.eventId);
-    if (ev) openFormPanel(ev, null);
-    return;
-  }
+  if (!block) return;
+  const ev = periodEvents.find(x => x.id === block.dataset.eventId);
+  if (ev) openFormPanel(ev, null);
+});
+
+// Drag-to-select a start/end time range (like Google Calendar), snapped to 15 minutes.
+// A plain click (no real drag) still works and opens the form with a default 30-min slot.
+let weekDrag = null;
+
+function clampPx(v) { return Math.max(0, Math.min(TOTAL_PX, v)); }
+function snap15(px) { const unit = HOUR_PX / 4; return Math.round(px / unit) * unit; }
+function pxToTime(px) {
+  const totalMinutes = Math.round((px / HOUR_PX) * 60);
+  const hour = Math.min(HOUR_START + Math.floor(totalMinutes / 60), HOUR_END);
+  const minute = totalMinutes % 60;
+  return `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+}
+
+document.getElementById("weekDays").addEventListener("mousedown", (e) => {
+  if (e.target.closest(".week-event-block")) return;
   const col = e.target.closest(".week-day-col");
   if (!col) return;
+  e.preventDefault();
   const rect = col.getBoundingClientRect();
-  const offsetY = e.clientY - rect.top;
-  let hour = HOUR_START + Math.floor(offsetY / HOUR_PX);
-  hour = Math.min(Math.max(hour, HOUR_START), HOUR_END - 1);
-  const minute = (offsetY % HOUR_PX) < HOUR_PX / 2 ? 0 : 30;
-  const presetTime = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
-  openFormPanel(null, col.dataset.date, presetTime);
+  const startY = clampPx(e.clientY - rect.top);
+  const preview = document.createElement("div");
+  preview.className = "week-drag-preview";
+  preview.style.top = startY + "px";
+  preview.style.height = "2px";
+  col.appendChild(preview);
+  weekDrag = { dateStr: col.dataset.date, col, startY, preview, moved: false };
+});
+
+document.addEventListener("mousemove", (e) => {
+  if (!weekDrag) return;
+  const rect = weekDrag.col.getBoundingClientRect();
+  const curY = clampPx(e.clientY - rect.top);
+  if (Math.abs(curY - weekDrag.startY) > 3) weekDrag.moved = true;
+  const top = Math.min(weekDrag.startY, curY);
+  const height = Math.max(4, Math.abs(curY - weekDrag.startY));
+  weekDrag.preview.style.top = top + "px";
+  weekDrag.preview.style.height = height + "px";
+});
+
+document.addEventListener("mouseup", (e) => {
+  if (!weekDrag) return;
+  const { dateStr, col, startY, preview, moved } = weekDrag;
+  weekDrag = null;
+  preview.remove();
+
+  const rect = col.getBoundingClientRect();
+  const endY = clampPx(e.clientY - rect.top);
+  let y1 = snap15(Math.min(startY, endY));
+  let y2 = snap15(Math.max(startY, endY));
+  if (!moved || y2 - y1 < snap15(1)) y2 = y1 + HOUR_PX / 2; // plain click -> default 30-min slot
+
+  openFormPanel(null, dateStr, pxToTime(y1), pxToTime(y2));
 });
 
 // ---------- Day detail panel ----------
@@ -479,7 +529,6 @@ function openDayPanel(dateStr) {
         <div class="ev-meta">
           ${ev.all_day ? "終日" : fmtTime(ev.start_at) + (ev.end_at ? " - " + fmtTime(ev.end_at) : "")}
           ・${ownerName(ev.owner)}${ev.owner?.company_name ? "(" + ev.owner.company_name + ")" : ""}
-          ${ev.location ? "・" + ev.location : ""}
         </div>
       </div>
     </div>
@@ -513,27 +562,35 @@ document.getElementById("addBtn").addEventListener("click", () => {
 
 // ---------- Add / edit event form ----------
 
-function openFormPanel(ev, dateStr, presetTime) {
+function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
   editingId = ev ? ev.id : null;
   document.getElementById("formTitle").textContent = ev ? "予定を編集" : "予定を追加";
   document.getElementById("formMsg").textContent = "";
 
-  const canEdit = !ev || ev.owner_id === me.id || me.is_admin;
+  const canEdit = !ev || ev.owner_id === me.id || me.role === "admin";
   document.getElementById("formOwner").textContent = ev
     ? `作成者: ${ownerName(ev.owner)}`
     : `作成者: ${ownerName(me)}`;
 
-  document.querySelector(`input[name="event_type"][value="${ev ? ev.event_type : "personal"}"]`).checked = true;
+  // New events are fixed to a type based on the creator's role; only admins
+  // get to pick freely (and can retype an existing event of any owner).
+  const effectiveType = ev ? ev.event_type : (me.role === "operator" ? "appointment" : "personal");
+  document.querySelector(`input[name="event_type"][value="${effectiveType}"]`).checked = true;
+  document.getElementById("typeField").hidden = me.role !== "admin";
+
+  document.getElementById("titleLabel").textContent = effectiveType === "appointment" ? "会社名" : "タイトル";
+  document.getElementById("f_title").required = me.role !== "client";
+
   document.getElementById("f_title").value = ev ? ev.title : "";
   document.getElementById("f_allday").checked = ev ? ev.all_day : false;
 
-  const defaultTime = presetTime || "09:00";
-  const startD = ev ? new Date(ev.start_at) : new Date(dateStr + "T" + defaultTime + ":00");
+  const defaultStart = presetStartTime || "09:00";
+  const startD = ev ? new Date(ev.start_at) : new Date(dateStr + "T" + defaultStart + ":00");
   document.getElementById("f_start_date").value = ymd(startD);
   document.getElementById("f_start_time").value =
-    ev && !ev.all_day ? fmtTime(ev.start_at) : (ev ? "" : defaultTime);
-  document.getElementById("f_end_time").value = ev && ev.end_at ? fmtTime(ev.end_at) : "";
-  document.getElementById("f_location").value = ev ? (ev.location || "") : "";
+    ev && !ev.all_day ? fmtTime(ev.start_at) : (ev ? "" : defaultStart);
+  document.getElementById("f_end_time").value =
+    ev && ev.end_at ? fmtTime(ev.end_at) : (ev ? "" : (presetEndTime || ""));
   document.getElementById("f_memo").value = ev ? (ev.memo || "") : "";
 
   toggleAllDayFields();
@@ -572,13 +629,15 @@ document.getElementById("eventForm").addEventListener("submit", async (e) => {
   const start_at = new Date(`${startDate}T${startTime}:00`).toISOString();
   const end_at = (!allDay && endTime) ? new Date(`${startDate}T${endTime}:00`).toISOString() : null;
 
+  let title = document.getElementById("f_title").value.trim();
+  if (!title && me.role === "client") title = "予定あり";
+
   const payload = {
-    title: document.getElementById("f_title").value.trim(),
+    title,
     event_type: document.querySelector('input[name="event_type"]:checked').value,
     all_day: allDay,
     start_at,
     end_at,
-    location: document.getElementById("f_location").value.trim() || null,
     memo: document.getElementById("f_memo").value.trim() || null,
   };
 
@@ -635,7 +694,7 @@ document.getElementById("todayBtn").addEventListener("click", () => {
   me = await requireApprovedSession();
   if (!me) return;
   document.getElementById("whoami").textContent = ownerName(me);
-  if (me.is_admin) document.getElementById("adminLink").hidden = false;
+  if (me.role === "admin") document.getElementById("adminLink").hidden = false;
   await loadMiniDots();
   setMode("week");
 })();

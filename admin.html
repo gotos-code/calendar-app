@@ -27,7 +27,7 @@
         <th>メールアドレス</th>
         <th>登録日</th>
         <th>承認</th>
-        <th>管理者</th>
+        <th>権限</th>
         <th></th>
       </tr>
     </thead>
@@ -61,15 +61,17 @@ async function loadRows() {
       <td>${p.email}</td>
       <td>${fmtDate(p.created_at)}</td>
       <td><span class="pill ${p.approved ? "yes" : "no"}">${p.approved ? "承認済み" : "未承認"}</span></td>
-      <td><span class="pill ${p.is_admin ? "yes" : "no"}">${p.is_admin ? "管理者" : "一般"}</span></td>
+      <td>
+        <select data-action="role" data-id="${p.id}" ${p.id === me.id ? "disabled" : ""}>
+          <option value="client" ${p.role === "client" ? "selected" : ""}>クライアント</option>
+          <option value="operator" ${p.role === "operator" ? "selected" : ""}>オペレーター</option>
+          <option value="admin" ${p.role === "admin" ? "selected" : ""}>管理者</option>
+        </select>
+      </td>
       <td>
         <button class="btn secondary" data-action="toggle-approved" data-id="${p.id}" data-value="${!p.approved}">
           ${p.approved ? "承認取消" : "承認する"}
         </button>
-        ${p.id !== me.id ? `
-        <button class="btn secondary" data-action="toggle-admin" data-id="${p.id}" data-value="${!p.is_admin}">
-          ${p.is_admin ? "管理者解除" : "管理者にする"}
-        </button>` : ""}
       </td>
     </tr>
   `).join("");
@@ -80,11 +82,21 @@ document.getElementById("rows").addEventListener("click", async (e) => {
   if (!btn) return;
   btn.disabled = true;
 
-  const id = btn.dataset.id;
-  const value = btn.dataset.value === "true";
-  const field = btn.dataset.action === "toggle-approved" ? "approved" : "is_admin";
+  const { error } = await sb.from("profiles")
+    .update({ approved: btn.dataset.value === "true" })
+    .eq("id", btn.dataset.id);
+  if (error) {
+    alert("更新に失敗しました: " + error.message);
+  }
+  await loadRows();
+});
 
-  const { error } = await sb.from("profiles").update({ [field]: value }).eq("id", id);
+document.getElementById("rows").addEventListener("change", async (e) => {
+  const sel = e.target.closest('select[data-action="role"]');
+  if (!sel) return;
+  sel.disabled = true;
+
+  const { error } = await sb.from("profiles").update({ role: sel.value }).eq("id", sel.dataset.id);
   if (error) {
     alert("更新に失敗しました: " + error.message);
   }
@@ -94,7 +106,7 @@ document.getElementById("rows").addEventListener("click", async (e) => {
 (async () => {
   me = await requireApprovedSession();
   if (!me) return;
-  if (!me.is_admin) {
+  if (me.role !== "admin") {
     document.querySelector(".app-body").innerHTML =
       '<p class="msg error">このページは管理者のみ閲覧できます。</p>';
     return;

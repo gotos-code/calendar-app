@@ -6,6 +6,7 @@
   --bg: #F5F7FA;
   --card-bg: #FFFFFF;
   --border: #E2E6ED;
+  --border-strong: #C7CEDA;
   --text: #2A2E36;
   --text-muted: #6B7280;
   --personal: #4C8DFF;
@@ -14,6 +15,10 @@
 }
 
 * { box-sizing: border-box; }
+
+/* .btn's own `display` would otherwise beat the UA [hidden] rule and make
+   hidden buttons (e.g. #deleteBtn on a new event) render anyway. */
+[hidden] { display: none !important; }
 
 body {
   margin: 0;
@@ -331,15 +336,34 @@ a { color: var(--accent); }
 }
 .week-day-col {
   position: relative;
-  border-left: 1px solid var(--border);
+  border-left: 2px solid var(--border-strong);
   cursor: pointer;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0, transparent 47px,
-    var(--border) 47px, var(--border) 48px
-  );
+  user-select: none;
 }
 .week-day-col.today { background-color: #FAFBFF; }
+.hour-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1px;
+  background: var(--border);
+  pointer-events: none;
+}
+.half-hour-line {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1px;
+  background: var(--border);
+  opacity: 0.45;
+  pointer-events: none;
+}
+.week-drag-preview {
+  position: absolute;
+  left: 2px; right: 2px;
+  background: rgba(62, 108, 181, 0.16);
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  pointer-events: none;
+}
 .week-event-block {
   position: absolute;
   box-sizing: border-box;
@@ -433,3 +457,14 @@ table.admin-table th { color: var(--text-muted); font-weight: 500; background: #
 .pill { font-size: 11px; padding: 2px 8px; border-radius: 10px; }
 .pill.yes { background: #E5F6EA; color: #1E8A3B; }
 .pill.no { background: #FDECEC; color: #C0392B; }
+
+table.admin-table select {
+  font-family: inherit;
+  font-size: 13px;
+  padding: 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  color: var(--text);
+}
+table.admin-table select:disabled { opacity: 0.5; }
