@@ -49,8 +49,8 @@
     </div>
 
     <div class="legend">
-      <span><span class="dot personal"></span>個人スケジュール</span>
-      <span><span class="dot appointment"></span>アポ</span>
+      <span><span class="dot personal"></span>クライアント</span>
+      <span><span class="dot appointment"></span>社内</span>
     </div>
 
     <!-- Month view -->
@@ -91,18 +91,17 @@
     <h2 id="formTitle">予定を追加</h2>
     <div class="panel-sub" id="formOwner"></div>
     <form id="eventForm">
-      <!-- Kept in the DOM (never shown) so the hidden radio still carries the
-           event's type through to submit; type is role-derived, never user-picked. -->
-      <div class="field" id="typeField" hidden>
-        <label>種類</label>
+      <!-- Only admins see this; client/operator have a fixed type and never pick. -->
+      <div class="field" id="typeField">
+        <label>種別</label>
         <div class="type-toggle">
-          <label class="opt-personal">
-            <input type="radio" name="event_type" value="personal" checked>
-            <span>個人</span>
-          </label>
           <label class="opt-appointment">
-            <input type="radio" name="event_type" value="appointment">
-            <span>アポ</span>
+            <input type="radio" name="event_type" value="appointment" checked>
+            <span>社内</span>
+          </label>
+          <label class="opt-personal">
+            <input type="radio" name="event_type" value="personal">
+            <span>管理者</span>
           </label>
         </div>
       </div>
@@ -577,10 +576,11 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
     ? `作成者: ${ownerName(ev.owner)}`
     : `作成者: ${ownerName(me)}`;
 
-  // Type is never user-chosen: it's fixed by the creator's role for new
-  // events, and preserved as-is when editing an existing one.
+  // Client/operator have a fixed type (never shown, never chosen). Admins get
+  // a real 社内/管理者 picker, for new events and when editing anyone's.
   const effectiveType = ev ? ev.event_type : (me.role === "operator" ? "appointment" : "personal");
   document.querySelector(`input[name="event_type"][value="${effectiveType}"]`).checked = true;
+  document.getElementById("typeField").hidden = me.role !== "admin";
 
   document.getElementById("titleLabel").textContent = effectiveType === "appointment" ? "会社名" : "タイトル";
   document.getElementById("f_title").required = me.role !== "client";
@@ -619,6 +619,12 @@ function toggleAllDayFields() {
 }
 
 document.getElementById("f_allday").addEventListener("change", toggleAllDayFields);
+
+// Admins can change 種別 interactively (社内/管理者); keep the title label in sync.
+document.getElementById("typeField").addEventListener("change", () => {
+  const val = document.querySelector('input[name="event_type"]:checked').value;
+  document.getElementById("titleLabel").textContent = val === "appointment" ? "会社名" : "タイトル";
+});
 
 document.getElementById("eventForm").addEventListener("submit", async (e) => {
   e.preventDefault();
