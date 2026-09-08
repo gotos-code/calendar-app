@@ -91,7 +91,9 @@
     <h2 id="formTitle">予定を追加</h2>
     <div class="panel-sub" id="formOwner"></div>
     <form id="eventForm">
-      <div class="field" id="typeField">
+      <!-- Kept in the DOM (never shown) so the hidden radio still carries the
+           event's type through to submit; type is role-derived, never user-picked. -->
+      <div class="field" id="typeField" hidden>
         <label>種類</label>
         <div class="type-toggle">
           <label class="opt-personal">
@@ -572,8 +574,8 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
     ? `作成者: ${ownerName(ev.owner)}`
     : `作成者: ${ownerName(me)}`;
 
-  // New events are fixed to a type based on the creator's role; only admins
-  // get to pick freely (and can retype an existing event of any owner).
+  // Type is never user-chosen: it's fixed by the creator's role for new
+  // events, and preserved as-is when editing an existing one.
   const effectiveType = ev ? ev.event_type : (me.role === "operator" ? "appointment" : "personal");
   document.querySelector(`input[name="event_type"][value="${effectiveType}"]`).checked = true;
 
@@ -611,8 +613,6 @@ function toggleAllDayFields() {
   const allDay = document.getElementById("f_allday").checked;
   document.getElementById("f_start_time_wrap").style.display = allDay ? "none" : "block";
   document.getElementById("f_end_time_wrap").style.display = allDay ? "none" : "block";
-  // All-day events don't need a personal/appointment distinction either.
-  document.getElementById("typeField").hidden = allDay || me.role !== "admin";
 }
 
 document.getElementById("f_allday").addEventListener("change", toggleAllDayFields);
