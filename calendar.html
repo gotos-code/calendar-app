@@ -18,27 +18,60 @@
   </div>
 </div>
 
-<div class="app-body">
-  <div class="calendar-toolbar">
-    <button class="icon-btn" id="prevBtn">‹</button>
-    <div class="month-label" id="monthLabel"></div>
-    <div class="nav-btns">
-      <button class="btn secondary" id="todayBtn">今日</button>
-      <button class="icon-btn" id="nextBtn">›</button>
-      <button class="btn" id="addBtn">+ 予定を追加</button>
+<div class="app-shell">
+  <div class="sidebar">
+    <div class="mini-cal">
+      <div class="mini-cal-header">
+        <span id="miniLabel"></span>
+        <div class="mini-cal-nav">
+          <button id="miniPrev">‹</button>
+          <button id="miniNext">›</button>
+        </div>
+      </div>
+      <div class="mini-grid" id="miniDow"></div>
+      <div class="mini-grid" id="miniGrid"></div>
     </div>
   </div>
 
-  <div class="legend">
-    <span><span class="dot personal"></span>個人スケジュール</span>
-    <span><span class="dot appointment"></span>アポ</span>
-  </div>
+  <div class="main-content">
+    <div class="calendar-toolbar">
+      <button class="icon-btn" id="prevBtn">‹</button>
+      <div class="month-label" id="monthLabel"></div>
+      <div class="nav-btns">
+        <div class="view-toggle">
+          <button class="view-btn" data-mode="month">月</button>
+          <button class="view-btn active" data-mode="week">週</button>
+        </div>
+        <button class="btn secondary" id="todayBtn">今日</button>
+        <button class="icon-btn" id="nextBtn">›</button>
+        <button class="btn" id="addBtn">+ 予定を追加</button>
+      </div>
+    </div>
 
-  <div class="grid" id="dowRow">
-    <div class="dow">日</div><div class="dow">月</div><div class="dow">火</div>
-    <div class="dow">水</div><div class="dow">木</div><div class="dow">金</div><div class="dow">土</div>
+    <div class="legend">
+      <span><span class="dot personal"></span>個人スケジュール</span>
+      <span><span class="dot appointment"></span>アポ</span>
+    </div>
+
+    <!-- Month view -->
+    <div id="monthView" hidden>
+      <div class="grid" id="dowRow">
+        <div class="dow">日</div><div class="dow">月</div><div class="dow">火</div>
+        <div class="dow">水</div><div class="dow">木</div><div class="dow">金</div><div class="dow">土</div>
+      </div>
+      <div class="grid" id="grid"></div>
+    </div>
+
+    <!-- Week view: weekdays only, 8:00-21:00 time grid -->
+    <div id="weekView">
+      <div class="week-header" id="weekHeader"></div>
+      <div class="week-allday" id="weekAllDay"></div>
+      <div class="week-body">
+        <div class="week-hour-labels" id="weekHourLabels"></div>
+        <div class="week-days" id="weekDays"></div>
+      </div>
+    </div>
   </div>
-  <div class="grid" id="grid"></div>
 </div>
 
 <!-- Day detail panel: list of events for a clicked day -->
@@ -110,29 +143,50 @@
 </div>
 
 <script>
+const HOUR_START = 8;
+const HOUR_END = 21; // display window is 8:00-21:00
+const HOUR_PX = 48;
+const TOTAL_PX = (HOUR_END - HOUR_START) * HOUR_PX;
+const WEEKDAY = ["日","月","火","水","木","金","土"];
+
 let me = null;
+let viewMode = "week"; // "month" | "week"
 let viewDate = new Date();
-viewDate.setDate(1);
-let monthEvents = [];
+let periodEvents = [];
 let editingId = null;
 let pendingDate = null;
-
-const WEEKDAY = ["日","月","火","水","木","金","土"];
+let miniMonthDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+let miniEventDots = new Set();
 
 function ymd(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
 }
 
+// Monday-based: the week view shows weekdays only (Mon-Fri).
+function startOfWeek(d) {
+  const r = new Date(d);
+  r.setHours(0, 0, 0, 0);
+  r.setDate(r.getDate() - ((r.getDay() + 6) % 7));
+  return r;
+}
+
 function gridRange(monthFirst) {
-  const start = new Date(monthFirst);
+  const start = new Date(monthFirst.getFullYear(), monthFirst.getMonth(), 1);
   start.setDate(start.getDate() - start.getDay());
   const end = new Date(start);
   end.setDate(end.getDate() + 42);
   return { start, end };
 }
 
-async function loadMonthEvents() {
-  const { start, end } = gridRange(viewDate);
+function weekRange(anyDate) {
+  const start = startOfWeek(anyDate);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 5); // Mon-Fri only
+  return { start, end };
+}
+
+async function loadEvents() {
+  const { start, end } = viewMode === "month" ? gridRange(viewDate) : weekRange(viewDate);
   const { data, error } = await sb
     .from("events")
     .select("*, owner:profiles(last_name, first_name, company_name, email)")
@@ -142,14 +196,14 @@ async function loadMonthEvents() {
 
   if (error) {
     console.error(error);
-    monthEvents = [];
+    periodEvents = [];
     return;
   }
-  monthEvents = data;
+  periodEvents = data;
 }
 
 function eventsOnDay(dateStr) {
-  return monthEvents.filter(ev => ev.start_at.slice(0, 10) === dateStr);
+  return periodEvents.filter(ev => ev.start_at.slice(0, 10) === dateStr);
 }
 
 function ownerName(p) {
@@ -163,7 +217,89 @@ function fmtTime(iso) {
   return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
 }
 
-function renderGrid() {
+async function refresh() {
+  await loadEvents();
+  if (viewMode === "month") renderMonth(); else renderWeek();
+
+  if (miniMonthDate.getMonth() !== viewDate.getMonth() || miniMonthDate.getFullYear() !== viewDate.getFullYear()) {
+    miniMonthDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
+    await loadMiniDots();
+  } else {
+    renderMiniCal();
+  }
+}
+
+// ---------- Mini month calendar (sidebar date picker) ----------
+
+async function loadMiniDots() {
+  const { start, end } = gridRange(miniMonthDate);
+  const { data, error } = await sb
+    .from("events")
+    .select("start_at")
+    .gte("start_at", start.toISOString())
+    .lt("start_at", end.toISOString());
+
+  miniEventDots = new Set(error ? [] : data.map(r => r.start_at.slice(0, 10)));
+  renderMiniCal();
+}
+
+function renderMiniCal() {
+  document.getElementById("miniLabel").textContent = `${miniMonthDate.getFullYear()}年${miniMonthDate.getMonth()+1}月`;
+  document.getElementById("miniDow").innerHTML = WEEKDAY.map(w => `<div class="mini-dow">${w}</div>`).join("");
+
+  const { start } = gridRange(miniMonthDate);
+  const todayStr = ymd(new Date());
+  const selectedStr = ymd(viewDate);
+  const cells = [];
+
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const dateStr = ymd(d);
+    const classes = ["mini-day"];
+    if (d.getMonth() !== miniMonthDate.getMonth()) classes.push("other-month");
+    if (dateStr === todayStr) classes.push("today");
+    if (dateStr === selectedStr) classes.push("selected");
+    cells.push(`
+      <div class="${classes.join(" ")}" data-date="${dateStr}">
+        ${d.getDate()}${miniEventDots.has(dateStr) ? '<span class="mini-dot"></span>' : ""}
+      </div>
+    `);
+  }
+  document.getElementById("miniGrid").innerHTML = cells.join("");
+}
+
+document.getElementById("miniPrev").addEventListener("click", () => {
+  miniMonthDate.setMonth(miniMonthDate.getMonth() - 1);
+  loadMiniDots();
+});
+document.getElementById("miniNext").addEventListener("click", () => {
+  miniMonthDate.setMonth(miniMonthDate.getMonth() + 1);
+  loadMiniDots();
+});
+document.getElementById("miniGrid").addEventListener("click", (e) => {
+  const cell = e.target.closest(".mini-day");
+  if (!cell) return;
+  viewDate = new Date(cell.dataset.date + "T00:00:00");
+  refresh();
+});
+
+function setMode(mode) {
+  viewMode = mode;
+  document.querySelectorAll(".view-btn").forEach(b => b.classList.toggle("active", b.dataset.mode === mode));
+  document.getElementById("monthView").hidden = mode !== "month";
+  document.getElementById("weekView").hidden = mode !== "week";
+  if (mode === "month") viewDate.setDate(1);
+  refresh();
+}
+
+document.querySelectorAll(".view-btn").forEach(b => {
+  b.addEventListener("click", () => setMode(b.dataset.mode));
+});
+
+// ---------- Month view ----------
+
+function renderMonth() {
   document.getElementById("monthLabel").textContent =
     `${viewDate.getFullYear()}年 ${viewDate.getMonth()+1}月`;
 
@@ -196,6 +332,138 @@ function renderGrid() {
   document.getElementById("grid").innerHTML = cells.join("");
 }
 
+document.getElementById("grid").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  const cell = e.target.closest(".day-cell");
+  if (!cell) return;
+  if (chip) {
+    const ev = periodEvents.find(x => x.id === chip.dataset.eventId);
+    if (ev) openFormPanel(ev, null);
+    return;
+  }
+  openDayPanel(cell.dataset.date);
+});
+
+// ---------- Week view (8:00-21:00 time grid) ----------
+
+function layoutDayEvents(events) {
+  const sorted = [...events].sort((a, b) => new Date(a.start_at) - new Date(b.start_at));
+  const colEnds = [];
+  sorted.forEach(ev => {
+    const startMs = new Date(ev.start_at).getTime();
+    const endMs = ev.end_at ? new Date(ev.end_at).getTime() : startMs + 30 * 60000;
+    let col = colEnds.findIndex(endTime => endTime <= startMs);
+    if (col === -1) { col = colEnds.length; colEnds.push(endMs); }
+    else { colEnds[col] = endMs; }
+    ev._col = col;
+  });
+  const totalCols = colEnds.length || 1;
+  sorted.forEach(ev => ev._totalCols = totalCols);
+  return sorted;
+}
+
+function renderWeekEventBlock(ev) {
+  const start = new Date(ev.start_at);
+  const startHourFloat = start.getHours() + start.getMinutes() / 60;
+  const end = ev.end_at ? new Date(ev.end_at) : new Date(start.getTime() + 30 * 60000);
+  const endHourFloat = Math.max(startHourFloat + 0.25, end.getHours() + end.getMinutes() / 60);
+
+  const top = Math.max(0, (startHourFloat - HOUR_START) * HOUR_PX);
+  const height = Math.max(18, (Math.min(endHourFloat, HOUR_END) - Math.max(startHourFloat, HOUR_START)) * HOUR_PX);
+  const width = 100 / ev._totalCols;
+  const left = ev._col * width;
+
+  return `
+    <div class="week-event-block ${ev.event_type}" data-event-id="${ev.id}"
+         style="top:${top}px; height:${height}px; width:calc(${width}% - 3px); left:calc(${left}% + 2px);"
+         title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
+      <div class="wb-time">${fmtTime(ev.start_at)}${ev.end_at ? "-" + fmtTime(ev.end_at) : ""}</div>${ev.title}
+    </div>
+  `;
+}
+
+function renderWeek() {
+  const start = startOfWeek(viewDate);
+  const days = [...Array(5)].map((_, i) => { const d = new Date(start); d.setDate(d.getDate() + i); return d; });
+  const todayStr = ymd(new Date());
+  const endDay = days[4];
+
+  document.getElementById("monthLabel").textContent = start.getMonth() === endDay.getMonth()
+    ? `${start.getFullYear()}年${start.getMonth()+1}月${start.getDate()}日 - ${endDay.getDate()}日`
+    : `${start.getFullYear()}年${start.getMonth()+1}月${start.getDate()}日 - ${endDay.getMonth()+1}月${endDay.getDate()}日`;
+
+  document.getElementById("weekHeader").innerHTML = `<div></div>` + days.map(d => `
+    <div class="week-header-cell ${ymd(d) === todayStr ? "today" : ""}" data-date="${ymd(d)}">
+      ${WEEKDAY[d.getDay()]}<br>${d.getDate()}
+    </div>
+  `).join("");
+
+  document.getElementById("weekAllDay").innerHTML = `<div class="week-allday-label">終日</div>` + days.map(d => {
+    const dayStr = ymd(d);
+    const allDayEvents = eventsOnDay(dayStr).filter(ev => ev.all_day);
+    return `<div class="week-allday-cell" data-date="${dayStr}">${allDayEvents.map(ev => `
+      <div class="chip ${ev.event_type}" data-event-id="${ev.id}" title="${ownerName(ev.owner)} - ${ev.title}">${ev.title}</div>
+    `).join("")}</div>`;
+  }).join("");
+
+  const hourLabels = [];
+  for (let h = HOUR_START; h < HOUR_END; h++) {
+    hourLabels.push(`<div class="week-hour-label" style="top:${(h - HOUR_START) * HOUR_PX}px">${h}:00</div>`);
+  }
+  const hourLabelsEl = document.getElementById("weekHourLabels");
+  hourLabelsEl.innerHTML = hourLabels.join("");
+  hourLabelsEl.style.height = TOTAL_PX + "px";
+
+  document.getElementById("weekDays").innerHTML = days.map(d => {
+    const dayStr = ymd(d);
+    const timedEvents = eventsOnDay(dayStr).filter(ev => !ev.all_day);
+    const laidOut = layoutDayEvents(timedEvents);
+    return `<div class="week-day-col ${dayStr === todayStr ? "today" : ""}" style="height:${TOTAL_PX}px" data-date="${dayStr}">
+      ${laidOut.map(ev => renderWeekEventBlock(ev)).join("")}
+    </div>`;
+  }).join("");
+}
+
+function openDayPanelFromCell(dateStr) {
+  openDayPanel(dateStr);
+}
+
+document.getElementById("weekHeader").addEventListener("click", (e) => {
+  const cell = e.target.closest(".week-header-cell");
+  if (cell) openDayPanelFromCell(cell.dataset.date);
+});
+
+document.getElementById("weekAllDay").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  if (chip) {
+    const ev = periodEvents.find(x => x.id === chip.dataset.eventId);
+    if (ev) openFormPanel(ev, null);
+    return;
+  }
+  const cell = e.target.closest(".week-allday-cell");
+  if (cell) openDayPanelFromCell(cell.dataset.date);
+});
+
+document.getElementById("weekDays").addEventListener("click", (e) => {
+  const block = e.target.closest(".week-event-block");
+  if (block) {
+    const ev = periodEvents.find(x => x.id === block.dataset.eventId);
+    if (ev) openFormPanel(ev, null);
+    return;
+  }
+  const col = e.target.closest(".week-day-col");
+  if (!col) return;
+  const rect = col.getBoundingClientRect();
+  const offsetY = e.clientY - rect.top;
+  let hour = HOUR_START + Math.floor(offsetY / HOUR_PX);
+  hour = Math.min(Math.max(hour, HOUR_START), HOUR_END - 1);
+  const minute = (offsetY % HOUR_PX) < HOUR_PX / 2 ? 0 : 30;
+  const presetTime = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  openFormPanel(null, col.dataset.date, presetTime);
+});
+
+// ---------- Day detail panel ----------
+
 function openDayPanel(dateStr) {
   pendingDate = dateStr;
   const d = new Date(dateStr + "T00:00:00");
@@ -224,7 +492,28 @@ function closeDayPanel() {
   document.getElementById("dayOverlay").hidden = true;
 }
 
-function openFormPanel(ev, dateStr) {
+document.getElementById("dayEventList").addEventListener("click", (e) => {
+  const row = e.target.closest(".event-row");
+  if (!row) return;
+  const ev = periodEvents.find(x => x.id === row.dataset.eventId);
+  if (ev) {
+    closeDayPanel();
+    openFormPanel(ev, null);
+  }
+});
+
+document.getElementById("dayAddBtn").addEventListener("click", () => {
+  closeDayPanel();
+  openFormPanel(null, pendingDate);
+});
+
+document.getElementById("addBtn").addEventListener("click", () => {
+  openFormPanel(null, ymd(new Date()));
+});
+
+// ---------- Add / edit event form ----------
+
+function openFormPanel(ev, dateStr, presetTime) {
   editingId = ev ? ev.id : null;
   document.getElementById("formTitle").textContent = ev ? "予定を編集" : "予定を追加";
   document.getElementById("formMsg").textContent = "";
@@ -238,10 +527,11 @@ function openFormPanel(ev, dateStr) {
   document.getElementById("f_title").value = ev ? ev.title : "";
   document.getElementById("f_allday").checked = ev ? ev.all_day : false;
 
-  const startD = ev ? new Date(ev.start_at) : new Date(dateStr + "T09:00:00");
+  const defaultTime = presetTime || "09:00";
+  const startD = ev ? new Date(ev.start_at) : new Date(dateStr + "T" + defaultTime + ":00");
   document.getElementById("f_start_date").value = ymd(startD);
   document.getElementById("f_start_time").value =
-    ev && !ev.all_day ? fmtTime(ev.start_at) : (ev ? "" : "09:00");
+    ev && !ev.all_day ? fmtTime(ev.start_at) : (ev ? "" : defaultTime);
   document.getElementById("f_end_time").value = ev && ev.end_at ? fmtTime(ev.end_at) : "";
   document.getElementById("f_location").value = ev ? (ev.location || "") : "";
   document.getElementById("f_memo").value = ev ? (ev.memo || "") : "";
@@ -268,37 +558,6 @@ function toggleAllDayFields() {
 }
 
 document.getElementById("f_allday").addEventListener("change", toggleAllDayFields);
-
-document.getElementById("grid").addEventListener("click", (e) => {
-  const chip = e.target.closest(".chip");
-  const cell = e.target.closest(".day-cell");
-  if (!cell) return;
-  if (chip) {
-    const ev = monthEvents.find(x => x.id === chip.dataset.eventId);
-    if (ev) openFormPanel(ev, null);
-    return;
-  }
-  openDayPanel(cell.dataset.date);
-});
-
-document.getElementById("dayEventList").addEventListener("click", (e) => {
-  const row = e.target.closest(".event-row");
-  if (!row) return;
-  const ev = monthEvents.find(x => x.id === row.dataset.eventId);
-  if (ev) {
-    closeDayPanel();
-    openFormPanel(ev, null);
-  }
-});
-
-document.getElementById("dayAddBtn").addEventListener("click", () => {
-  closeDayPanel();
-  openFormPanel(null, pendingDate);
-});
-
-document.getElementById("addBtn").addEventListener("click", () => {
-  openFormPanel(null, ymd(new Date()));
-});
 
 document.getElementById("eventForm").addEventListener("submit", async (e) => {
   e.preventDefault();
@@ -337,8 +596,7 @@ document.getElementById("eventForm").addEventListener("submit", async (e) => {
   }
 
   closeFormPanel();
-  await loadMonthEvents();
-  renderGrid();
+  await refresh();
 });
 
 document.getElementById("deleteBtn").addEventListener("click", async () => {
@@ -350,23 +608,27 @@ document.getElementById("deleteBtn").addEventListener("click", async () => {
     return;
   }
   closeFormPanel();
-  await loadMonthEvents();
-  renderGrid();
+  await refresh();
 });
 
-async function goToMonth(delta) {
-  viewDate.setMonth(viewDate.getMonth() + delta);
-  await loadMonthEvents();
-  renderGrid();
-}
+// ---------- Navigation ----------
 
-document.getElementById("prevBtn").addEventListener("click", () => goToMonth(-1));
-document.getElementById("nextBtn").addEventListener("click", () => goToMonth(1));
-document.getElementById("todayBtn").addEventListener("click", async () => {
+document.getElementById("prevBtn").addEventListener("click", () => {
+  if (viewMode === "month") viewDate.setMonth(viewDate.getMonth() - 1);
+  else viewDate.setDate(viewDate.getDate() - 7);
+  refresh();
+});
+
+document.getElementById("nextBtn").addEventListener("click", () => {
+  if (viewMode === "month") viewDate.setMonth(viewDate.getMonth() + 1);
+  else viewDate.setDate(viewDate.getDate() + 7);
+  refresh();
+});
+
+document.getElementById("todayBtn").addEventListener("click", () => {
   viewDate = new Date();
-  viewDate.setDate(1);
-  await loadMonthEvents();
-  renderGrid();
+  if (viewMode === "month") viewDate.setDate(1);
+  refresh();
 });
 
 (async () => {
@@ -374,8 +636,8 @@ document.getElementById("todayBtn").addEventListener("click", async () => {
   if (!me) return;
   document.getElementById("whoami").textContent = ownerName(me);
   if (me.is_admin) document.getElementById("adminLink").hidden = false;
-  await loadMonthEvents();
-  renderGrid();
+  await loadMiniDots();
+  setMode("week");
 })();
 </script>
 </body>
