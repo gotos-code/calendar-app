@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabaseClient.js"></script>
+</head>
+<body>
+<div class="auth-page">
+  <div class="auth-card" id="card">
+    <h1>Calendar</h1>
+    <div class="msg info" id="status">確認しています...</div>
+  </div>
+</div>
+<script>
+(async () => {
+  const statusEl = document.getElementById("status");
+  const { data: { session } } = await sb.auth.getSession();
+
+  if (!session) {
+    location.href = "login.html";
+    return;
+  }
+
+  const { data: profile, error } = await sb
+    .from("profiles")
+    .select("approved")
+    .eq("id", session.user.id)
+    .single();
+
+  if (error || !profile) {
+    statusEl.textContent = "プロフィールの取得に失敗しました。";
+    statusEl.className = "msg error";
+    return;
+  }
+
+  if (!profile.approved) {
+    statusEl.innerHTML = "アカウントは作成されましたが、まだ管理者の承認待ちです。<br>承認され次第、利用できるようになります。";
+    document.getElementById("card").insertAdjacentHTML(
+      "beforeend",
+      '<button class="btn secondary block" style="margin-top:16px" onclick="logout()">ログアウト</button>'
+    );
+    return;
+  }
+
+  location.href = "calendar.html";
+})();
+</script>
+</body>
+</html>

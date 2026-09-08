@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Calendar</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabaseClient.js"></script>
+</head>
+<body>
+<div class="app-header">
+  <div class="brand">📅 Calendar</div>
+  <div class="right">
+    <span id="whoami"></span>
+    <a href="admin.html" id="adminLink" hidden>管理者ページ</a>
+    <button class="btn secondary" onclick="logout()">ログアウト</button>
+  </div>
+</div>
+
+<div class="app-body">
+  <div class="calendar-toolbar">
+    <button class="icon-btn" id="prevBtn">‹</button>
+    <div class="month-label" id="monthLabel"></div>
+    <div class="nav-btns">
+      <button class="btn secondary" id="todayBtn">今日</button>
+      <button class="icon-btn" id="nextBtn">›</button>
+      <button class="btn" id="addBtn">+ 予定を追加</button>
+    </div>
+  </div>
+
+  <div class="legend">
+    <span><span class="dot personal"></span>個人スケジュール</span>
+    <span><span class="dot appointment"></span>アポ</span>
+  </div>
+
+  <div class="grid" id="dowRow">
+    <div class="dow">日</div><div class="dow">月</div><div class="dow">火</div>
+    <div class="dow">水</div><div class="dow">木</div><div class="dow">金</div><div class="dow">土</div>
+  </div>
+  <div class="grid" id="grid"></div>
+</div>
+
+<!-- Day detail panel: list of events for a clicked day -->
+<div class="overlay" id="dayOverlay" hidden>
+  <div class="panel">
+    <button class="panel-close" onclick="closeDayPanel()">×</button>
+    <h2 id="dayTitle"></h2>
+    <div class="panel-sub">この日の予定</div>
+    <div id="dayEventList"></div>
+    <button class="btn block" id="dayAddBtn">+ この日に予定を追加</button>
+  </div>
+</div>
+
+<!-- Add / edit event form panel -->
+<div class="overlay" id="formOverlay" hidden>
+  <div class="panel">
+    <button class="panel-close" onclick="closeFormPanel()">×</button>
+    <h2 id="formTitle">予定を追加</h2>
+    <div class="panel-sub" id="formOwner"></div>
+    <form id="eventForm">
+      <div class="field">
+        <label>種類</label>
+        <div class="type-toggle">
+          <label class="opt-personal">
+            <input type="radio" name="event_type" value="personal" checked>
+            <span>個人</span>
+          </label>
+          <label class="opt-appointment">
+            <input type="radio" name="event_type" value="appointment">
+            <span>アポ</span>
+          </label>
+        </div>
+      </div>
+      <div class="field">
+        <label for="f_title">タイトル</label>
+        <input type="text" id="f_title" required>
+      </div>
+      <div class="checkbox-row">
+        <input type="checkbox" id="f_allday">
+        <label for="f_allday">終日</label>
+      </div>
+      <div class="field">
+        <label for="f_start_date">開始日</label>
+        <input type="date" id="f_start_date" required>
+      </div>
+      <div class="field" id="f_start_time_wrap">
+        <label for="f_start_time">開始時刻</label>
+        <input type="time" id="f_start_time">
+      </div>
+      <div class="field" id="f_end_time_wrap">
+        <label for="f_end_time">終了時刻(任意)</label>
+        <input type="time" id="f_end_time">
+      </div>
+      <div class="field">
+        <label for="f_location">場所(任意)</label>
+        <input type="text" id="f_location">
+      </div>
+      <div class="field">
+        <label for="f_memo">メモ(任意)</label>
+        <textarea id="f_memo" rows="3"></textarea>
+      </div>
+      <div class="msg error" id="formMsg"></div>
+      <div class="form-actions">
+        <button type="button" class="btn secondary" id="deleteBtn" hidden>削除</button>
+        <button type="submit" class="btn">保存</button>
+      </div>
+    </form>
+  </div>
+</div>
+
+<script>
+let me = null;
+let viewDate = new Date();
+viewDate.setDate(1);
+let monthEvents = [];
+let editingId = null;
+let pendingDate = null;
+
+const WEEKDAY = ["日","月","火","水","木","金","土"];
+
+function ymd(d) {
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function gridRange(monthFirst) {
+  const start = new Date(monthFirst);
+  start.setDate(start.getDate() - start.getDay());
+  const end = new Date(start);
+  end.setDate(end.getDate() + 42);
+  return { start, end };
+}
+
+async function loadMonthEvents() {
+  const { start, end } = gridRange(viewDate);
+  const { data, error } = await sb
+    .from("events")
+    .select("*, owner:profiles(display_name, email)")
+    .gte("start_at", start.toISOString())
+    .lt("start_at", end.toISOString())
+    .order("start_at", { ascending: true });
+
+  if (error) {
+    console.error(error);
+    monthEvents = [];
+    return;
+  }
+  monthEvents = data;
+}
+
+function eventsOnDay(dateStr) {
+  return monthEvents.filter(ev => ev.start_at.slice(0, 10) === dateStr);
+}
+
+function fmtTime(iso) {
+  const d = new Date(iso);
+  return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
+function renderGrid() {
+  document.getElementById("monthLabel").textContent =
+    `${viewDate.getFullYear()}年 ${viewDate.getMonth()+1}月`;
+
+  const { start } = gridRange(viewDate);
+  const todayStr = ymd(new Date());
+  const cells = [];
+
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(start);
+    d.setDate(d.getDate() + i);
+    const dateStr = ymd(d);
+    const inMonth = d.getMonth() === viewDate.getMonth();
+    const dayEvents = eventsOnDay(dateStr);
+    const shown = dayEvents.slice(0, 3);
+    const extra = dayEvents.length - shown.length;
+
+    cells.push(`
+      <div class="day-cell ${inMonth ? "" : "other-month"} ${dateStr === todayStr ? "today" : ""}" data-date="${dateStr}">
+        <div class="day-num">${d.getDate()}</div>
+        ${shown.map(ev => `
+          <div class="chip ${ev.event_type}" data-event-id="${ev.id}"
+               title="${ev.owner?.display_name || ev.owner?.email || ""} - ${ev.title}">
+            ${ev.all_day ? "" : fmtTime(ev.start_at) + " "}${ev.title}
+          </div>
+        `).join("")}
+        ${extra > 0 ? `<div class="chip-more">+${extra}件</div>` : ""}
+      </div>
+    `);
+  }
+  document.getElementById("grid").innerHTML = cells.join("");
+}
+
+function openDayPanel(dateStr) {
+  pendingDate = dateStr;
+  const d = new Date(dateStr + "T00:00:00");
+  document.getElementById("dayTitle").textContent =
+    `${d.getFullYear()}年${d.getMonth()+1}月${d.getDate()}日(${WEEKDAY[d.getDay()]})`;
+
+  const dayEvents = eventsOnDay(dateStr);
+  document.getElementById("dayEventList").innerHTML = dayEvents.length ? dayEvents.map(ev => `
+    <div class="event-row" data-event-id="${ev.id}">
+      <span class="badge ${ev.event_type}">${ev.event_type === "personal" ? "個人" : "アポ"}</span>
+      <div class="ev-main">
+        <div class="ev-title">${ev.title}</div>
+        <div class="ev-meta">
+          ${ev.all_day ? "終日" : fmtTime(ev.start_at) + (ev.end_at ? " - " + fmtTime(ev.end_at) : "")}
+          ・${ev.owner?.display_name || ev.owner?.email || "unknown"}
+          ${ev.location ? "・" + ev.location : ""}
+        </div>
+      </div>
+    </div>
+  `).join("") : '<div class="msg info">予定はありません</div>';
+
+  document.getElementById("dayOverlay").hidden = false;
+}
+
+function closeDayPanel() {
+  document.getElementById("dayOverlay").hidden = true;
+}
+
+function openFormPanel(ev, dateStr) {
+  editingId = ev ? ev.id : null;
+  document.getElementById("formTitle").textContent = ev ? "予定を編集" : "予定を追加";
+  document.getElementById("formMsg").textContent = "";
+
+  const canEdit = !ev || ev.owner_id === me.id || me.is_admin;
+  document.getElementById("formOwner").textContent = ev
+    ? `作成者: ${ev.owner?.display_name || ev.owner?.email || ""}`
+    : `作成者: ${me.display_name || me.email}`;
+
+  document.querySelector(`input[name="event_type"][value="${ev ? ev.event_type : "personal"}"]`).checked = true;
+  document.getElementById("f_title").value = ev ? ev.title : "";
+  document.getElementById("f_allday").checked = ev ? ev.all_day : false;
+
+  const startD = ev ? new Date(ev.start_at) : new Date(dateStr + "T09:00:00");
+  document.getElementById("f_start_date").value = ymd(startD);
+  document.getElementById("f_start_time").value =
+    ev && !ev.all_day ? fmtTime(ev.start_at) : (ev ? "" : "09:00");
+  document.getElementById("f_end_time").value = ev && ev.end_at ? fmtTime(ev.end_at) : "";
+  document.getElementById("f_location").value = ev ? (ev.location || "") : "";
+  document.getElementById("f_memo").value = ev ? (ev.memo || "") : "";
+
+  toggleAllDayFields();
+
+  const deleteBtn = document.getElementById("deleteBtn");
+  deleteBtn.hidden = !(ev && canEdit);
+
+  document.querySelectorAll("#eventForm input, #eventForm textarea, #eventForm button")
+    .forEach(el => el.disabled = !canEdit && !!ev);
+
+  document.getElementById("formOverlay").hidden = false;
+}
+
+function closeFormPanel() {
+  document.getElementById("formOverlay").hidden = true;
+}
+
+function toggleAllDayFields() {
+  const allDay = document.getElementById("f_allday").checked;
+  document.getElementById("f_start_time_wrap").style.display = allDay ? "none" : "block";
+  document.getElementById("f_end_time_wrap").style.display = allDay ? "none" : "block";
+}
+
+document.getElementById("f_allday").addEventListener("change", toggleAllDayFields);
+
+document.getElementById("grid").addEventListener("click", (e) => {
+  const chip = e.target.closest(".chip");
+  const cell = e.target.closest(".day-cell");
+  if (!cell) return;
+  if (chip) {
+    const ev = monthEvents.find(x => x.id === chip.dataset.eventId);
+    if (ev) openFormPanel(ev, null);
+    return;
+  }
+  openDayPanel(cell.dataset.date);
+});
+
+document.getElementById("dayEventList").addEventListener("click", (e) => {
+  const row = e.target.closest(".event-row");
+  if (!row) return;
+  const ev = monthEvents.find(x => x.id === row.dataset.eventId);
+  if (ev) {
+    closeDayPanel();
+    openFormPanel(ev, null);
+  }
+});
+
+document.getElementById("dayAddBtn").addEventListener("click", () => {
+  closeDayPanel();
+  openFormPanel(null, pendingDate);
+});
+
+document.getElementById("addBtn").addEventListener("click", () => {
+  openFormPanel(null, ymd(new Date()));
+});
+
+document.getElementById("eventForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const msg = document.getElementById("formMsg");
+  msg.textContent = "";
+
+  const allDay = document.getElementById("f_allday").checked;
+  const startDate = document.getElementById("f_start_date").value;
+  const startTime = allDay ? "00:00" : (document.getElementById("f_start_time").value || "00:00");
+  const endTime = document.getElementById("f_end_time").value;
+
+  const start_at = new Date(`${startDate}T${startTime}:00`).toISOString();
+  const end_at = (!allDay && endTime) ? new Date(`${startDate}T${endTime}:00`).toISOString() : null;
+
+  const payload = {
+    title: document.getElementById("f_title").value.trim(),
+    event_type: document.querySelector('input[name="event_type"]:checked').value,
+    all_day: allDay,
+    start_at,
+    end_at,
+    location: document.getElementById("f_location").value.trim() || null,
+    memo: document.getElementById("f_memo").value.trim() || null,
+  };
+
+  let error;
+  if (editingId) {
+    ({ error } = await sb.from("events").update(payload).eq("id", editingId));
+  } else {
+    payload.owner_id = me.id;
+    ({ error } = await sb.from("events").insert(payload));
+  }
+
+  if (error) {
+    msg.textContent = "保存に失敗しました: " + error.message;
+    return;
+  }
+
+  closeFormPanel();
+  await loadMonthEvents();
+  renderGrid();
+});
+
+document.getElementById("deleteBtn").addEventListener("click", async () => {
+  if (!editingId) return;
+  if (!confirm("この予定を削除しますか?")) return;
+  const { error } = await sb.from("events").delete().eq("id", editingId);
+  if (error) {
+    document.getElementById("formMsg").textContent = "削除に失敗しました: " + error.message;
+    return;
+  }
+  closeFormPanel();
+  await loadMonthEvents();
+  renderGrid();
+});
+
+async function goToMonth(delta) {
+  viewDate.setMonth(viewDate.getMonth() + delta);
+  await loadMonthEvents();
+  renderGrid();
+}
+
+document.getElementById("prevBtn").addEventListener("click", () => goToMonth(-1));
+document.getElementById("nextBtn").addEventListener("click", () => goToMonth(1));
+document.getElementById("todayBtn").addEventListener("click", async () => {
+  viewDate = new Date();
+  viewDate.setDate(1);
+  await loadMonthEvents();
+  renderGrid();
+});
+
+(async () => {
+  me = await requireApprovedSession();
+  if (!me) return;
+  document.getElementById("whoami").textContent = me.display_name || me.email;
+  if (me.is_admin) document.getElementById("adminLink").hidden = false;
+  await loadMonthEvents();
+  renderGrid();
+})();
+</script>
+</body>
+</html>

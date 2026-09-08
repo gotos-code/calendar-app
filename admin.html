@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>管理者 - Calendar</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="supabaseClient.js"></script>
+</head>
+<body>
+<div class="app-header">
+  <div class="brand">Calendar 管理者ページ</div>
+  <div class="right">
+    <span id="whoami"></span>
+    <a href="calendar.html">カレンダーへ戻る</a>
+    <button class="btn secondary" onclick="logout()">ログアウト</button>
+  </div>
+</div>
+<div class="app-body">
+  <p style="color:var(--text-muted); font-size:13px;">新規登録されたユーザーの承認・管理者権限の付与/剥奪ができます。</p>
+  <table class="admin-table">
+    <thead>
+      <tr>
+        <th>氏名</th>
+        <th>メールアドレス</th>
+        <th>登録日</th>
+        <th>承認</th>
+        <th>管理者</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+<script>
+let me = null;
+
+function fmtDate(iso) {
+  const d = new Date(iso);
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+}
+
+async function loadRows() {
+  const { data: profiles, error } = await sb
+    .from("profiles")
+    .select("*")
+    .order("created_at", { ascending: true });
+
+  if (error) {
+    document.getElementById("rows").innerHTML =
+      `<tr><td colspan="6">読み込みに失敗しました: ${error.message}</td></tr>`;
+    return;
+  }
+
+  document.getElementById("rows").innerHTML = profiles.map(p => `
+    <tr>
+      <td>${p.display_name || "(未設定)"}</td>
+      <td>${p.email}</td>
+      <td>${fmtDate(p.created_at)}</td>
+      <td><span class="pill ${p.approved ? "yes" : "no"}">${p.approved ? "承認済み" : "未承認"}</span></td>
+      <td><span class="pill ${p.is_admin ? "yes" : "no"}">${p.is_admin ? "管理者" : "一般"}</span></td>
+      <td>
+        <button class="btn secondary" data-action="toggle-approved" data-id="${p.id}" data-value="${!p.approved}">
+          ${p.approved ? "承認取消" : "承認する"}
+        </button>
+        ${p.id !== me.id ? `
+        <button class="btn secondary" data-action="toggle-admin" data-id="${p.id}" data-value="${!p.is_admin}">
+          ${p.is_admin ? "管理者解除" : "管理者にする"}
+        </button>` : ""}
+      </td>
+    </tr>
+  `).join("");
+}
+
+document.getElementById("rows").addEventListener("click", async (e) => {
+  const btn = e.target.closest("button[data-action]");
+  if (!btn) return;
+  btn.disabled = true;
+
+  const id = btn.dataset.id;
+  const value = btn.dataset.value === "true";
+  const field = btn.dataset.action === "toggle-approved" ? "approved" : "is_admin";
+
+  const { error } = await sb.from("profiles").update({ [field]: value }).eq("id", id);
+  if (error) {
+    alert("更新に失敗しました: " + error.message);
+  }
+  await loadRows();
+});
+
+(async () => {
+  me = await requireApprovedSession();
+  if (!me) return;
+  if (!me.is_admin) {
+    document.querySelector(".app-body").innerHTML =
+      '<p class="msg error">このページは管理者のみ閲覧できます。</p>';
+    return;
+  }
+  document.getElementById("whoami").textContent = me.display_name || me.email;
+  await loadRows();
+})();
+</script>
+</body>
+</html>
