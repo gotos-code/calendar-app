@@ -314,9 +314,12 @@ a { color: var(--accent); }
   background: var(--card-bg);
   border: 1px solid var(--border);
   border-radius: 10px;
-  max-height: 70vh;
-  overflow-y: auto;
+  padding-top: 8px;
+  overflow: hidden;
 }
+/* Lets the 5 day-column children participate directly in .week-body's grid
+   tracks instead of being squeezed into a single track as one wrapper item. */
+.week-days { display: contents; }
 .week-hour-labels { position: relative; }
 .week-hour-label {
   position: absolute;
