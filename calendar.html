@@ -576,7 +576,6 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
   // get to pick freely (and can retype an existing event of any owner).
   const effectiveType = ev ? ev.event_type : (me.role === "operator" ? "appointment" : "personal");
   document.querySelector(`input[name="event_type"][value="${effectiveType}"]`).checked = true;
-  document.getElementById("typeField").hidden = me.role !== "admin";
 
   document.getElementById("titleLabel").textContent = effectiveType === "appointment" ? "会社名" : "タイトル";
   document.getElementById("f_title").required = me.role !== "client";
@@ -612,6 +611,8 @@ function toggleAllDayFields() {
   const allDay = document.getElementById("f_allday").checked;
   document.getElementById("f_start_time_wrap").style.display = allDay ? "none" : "block";
   document.getElementById("f_end_time_wrap").style.display = allDay ? "none" : "block";
+  // All-day events don't need a personal/appointment distinction either.
+  document.getElementById("typeField").hidden = allDay || me.role !== "admin";
 }
 
 document.getElementById("f_allday").addEventListener("change", toggleAllDayFields);
