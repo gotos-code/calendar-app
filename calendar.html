@@ -157,9 +157,38 @@ let editingId = null;
 let pendingDate = null;
 let miniMonthDate = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1);
 let miniEventDots = new Set();
+let operatorLeadDays = 0; // admin-configurable; loaded from app_settings
 
 function ymd(d) {
   return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+}
+
+function isBusinessDay(d) {
+  const wd = d.getDay();
+  return wd !== 0 && wd !== 6;
+}
+
+// The date `days` business days after `start` (start itself not counted).
+function addBusinessDays(start, days) {
+  const d = new Date(start);
+  let counted = 0;
+  while (counted < days) {
+    d.setDate(d.getDate() + 1);
+    if (isBusinessDay(d)) counted++;
+  }
+  return d;
+}
+
+// Operators can't book on/after today up to (but not including) this date.
+function operatorCutoffDate() {
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  return addBusinessDays(today, operatorLeadDays);
+}
+
+function isBlockedForOperator(dateStr) {
+  if (operatorLeadDays <= 0) return false;
+  return dateStr < ymd(operatorCutoffDate());
 }
 
 // Monday-based: the week view shows weekdays only (Mon-Fri).
@@ -419,7 +448,8 @@ function renderWeek() {
     const dayEvents = eventsOnDay(dayStr);
     const allDayEvents = dayEvents.filter(ev => ev.all_day);
     const laidOut = layoutDayEvents(dayEvents.filter(ev => !ev.all_day));
-    return `<div class="week-day-col ${dayStr === todayStr ? "today" : ""}" style="height:${TOTAL_PX}px" data-date="${dayStr}">
+    const blocked = me.role === "operator" && isBlockedForOperator(dayStr);
+    return `<div class="week-day-col ${dayStr === todayStr ? "today" : ""} ${blocked ? "blocked" : ""}" style="height:${TOTAL_PX}px" data-date="${dayStr}">
       ${renderTickLines()}
       ${allDayEvents.map((ev, i) => renderAllDayBand(ev, i, allDayEvents.length)).join("")}
       ${laidOut.map(ev => renderWeekEventBlock(ev)).join("")}
@@ -485,7 +515,7 @@ function pxToTime(px) {
 document.getElementById("weekDays").addEventListener("mousedown", (e) => {
   if (e.target.closest(".week-event-block, .week-allday-band")) return;
   const col = e.target.closest(".week-day-col");
-  if (!col) return;
+  if (!col || col.classList.contains("blocked")) return;
   e.preventDefault();
   const rect = col.getBoundingClientRect();
   const startY = clampPx(e.clientY - rect.top);
@@ -652,6 +682,13 @@ document.getElementById("eventForm").addEventListener("submit", async (e) => {
   const startTime = allDay ? "00:00" : (document.getElementById("f_start_time").value || "00:00");
   const endTime = document.getElementById("f_end_time").value;
 
+  // Only new bookings are blocked — operators can still edit/correct an
+  // appointment they already created inside the lead-time window.
+  if (!editingId && me.role === "operator" && isBlockedForOperator(startDate)) {
+    msg.textContent = `本日から${operatorLeadDays}営業日以内は入力できません。`;
+    return;
+  }
+
   const start_at = new Date(`${startDate}T${startTime}:00`).toISOString();
   const end_at = (!allDay && endTime) ? new Date(`${startDate}T${endTime}:00`).toISOString() : null;
 
@@ -718,11 +755,17 @@ document.getElementById("todayBtn").addEventListener("click", () => {
   refresh();
 });
 
+async function loadSettings() {
+  const { data, error } = await sb.from("app_settings").select("operator_lead_business_days").eq("id", 1).single();
+  operatorLeadDays = (!error && data) ? data.operator_lead_business_days : 0;
+}
+
 (async () => {
   me = await requireApprovedSession();
   if (!me) return;
   document.getElementById("whoami").textContent = ownerName(me);
   if (me.role === "admin") document.getElementById("adminLink").hidden = false;
+  await loadSettings();
   await loadMiniDots();
   setMode("week");
 })();
