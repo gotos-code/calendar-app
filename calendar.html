@@ -782,8 +782,9 @@ document.getElementById("todayBtn").addEventListener("click", () => {
 });
 
 async function loadSettings() {
-  const { data, error } = await sb.from("app_settings").select("operator_lead_business_days").eq("id", 1).single();
+  const { data, error } = await sb.from("app_settings").select("client_name, operator_lead_business_days").eq("id", 1).single();
   operatorLeadDays = (!error && data) ? data.operator_lead_business_days : 0;
+  applyClientBranding(!error && data ? data.client_name : "");
 }
 
 // Live updates: any other user's insert/update/delete on events (or an admin
