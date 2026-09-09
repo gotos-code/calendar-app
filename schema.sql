@@ -81,6 +81,7 @@ create policy "own delete events" on events for delete using (
 -- ---------- app_settings ----------
 create table app_settings (
   id int primary key default 1,
+  client_name text not null default '',
   operator_lead_business_days int not null default 5,
   check (id = 1)
 );
