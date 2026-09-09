@@ -254,6 +254,30 @@ function memoFlag(ev) {
   return ev.memo && ev.memo.trim() ? '<span class="need-check">要確認</span>' : "";
 }
 
+// "相談可" gets its own flag (blue), separate from the red memo flag.
+function negotiableFlag(ev) {
+  return ev.negotiable ? '<span class="negotiable-flag">相談可</span>' : "";
+}
+
+// Who registered a 社内 (operator) appointment is only visible to the
+// registrant themselves and admins — not to other operators or clients.
+function canSeeOwner(ev) {
+  return ev.event_type !== "appointment" || me.role === "admin" || ev.owner_id === me.id;
+}
+
+// Builds the "<name> (<company>)" prefix used in tooltips/lists, respecting
+// canSeeOwner (returns "" when the viewer isn't allowed to see who it is).
+function ownerDisplay(ev) {
+  if (!canSeeOwner(ev)) return "";
+  const name = ownerName(ev.owner);
+  return name + (ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : "");
+}
+
+function tooltipFor(ev) {
+  const owner = ownerDisplay(ev);
+  return owner ? `${owner} - ${ev.title}` : ev.title;
+}
+
 async function refresh() {
   await loadEvents();
   if (viewMode === "month") renderMonth(); else renderWeek();
@@ -358,8 +382,8 @@ function renderMonth() {
         <div class="day-num">${d.getDate()}</div>
         ${shown.map(ev => `
           <div class="chip ${ev.event_type} ${ev.negotiable ? "negotiable" : ""}" data-event-id="${ev.id}"
-               title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
-            ${ev.all_day ? "" : fmtTime(ev.start_at) + " "}${ev.title}${memoFlag(ev)}
+               title="${tooltipFor(ev)}">
+            ${ev.all_day ? "" : fmtTime(ev.start_at) + " "}${ev.title}${negotiableFlag(ev)}${memoFlag(ev)}
           </div>
         `).join("")}
         ${extra > 0 ? `<div class="chip-more">+${extra}件</div>` : ""}
@@ -413,9 +437,9 @@ function renderWeekEventBlock(ev) {
   return `
     <div class="week-event-block ${ev.event_type} ${ev.negotiable ? "negotiable" : ""}" data-event-id="${ev.id}"
          style="top:${top}px; height:${height}px; width:calc(${width}% - 3px); left:calc(${left}% + 2px);"
-         title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
+         title="${tooltipFor(ev)}">
       <span class="wb-time">${fmtTime(ev.start_at)}${ev.end_at ? "-" + fmtTime(ev.end_at) : ""}</span>
-      <span class="wb-title">${ev.title}${memoFlag(ev)}</span>
+      <span class="wb-title">${ev.title}${negotiableFlag(ev)}${memoFlag(ev)}</span>
     </div>
   `;
 }
@@ -467,8 +491,8 @@ function renderAllDayBand(ev, index, total) {
   return `
     <div class="week-allday-band ${ev.event_type} ${ev.negotiable ? "negotiable" : ""}" data-event-id="${ev.id}"
          style="left:calc(${left}% + 2px); width:calc(${width}% - 4px);"
-         title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
-      <span class="wab-label">${ev.title}${memoFlag(ev)}</span>
+         title="${tooltipFor(ev)}">
+      <span class="wab-label">${ev.title}${negotiableFlag(ev)}${memoFlag(ev)}</span>
     </div>
   `;
 }
@@ -567,10 +591,10 @@ function openDayPanel(dateStr) {
     <div class="event-row" data-event-id="${ev.id}">
       <span class="badge ${ev.event_type}">${ev.event_type === "personal" ? "クライアント" : "社内"}</span>
       <div class="ev-main">
-        <div class="ev-title">${ev.title}${memoFlag(ev)}</div>
+        <div class="ev-title">${ev.title}${negotiableFlag(ev)}${memoFlag(ev)}</div>
         <div class="ev-meta">
           ${ev.all_day ? "終日" : fmtTime(ev.start_at) + (ev.end_at ? " - " + fmtTime(ev.end_at) : "")}
-          ・${ownerName(ev.owner)}${ev.owner?.company_name ? "(" + ev.owner.company_name + ")" : ""}
+          ${canSeeOwner(ev) ? "・" + ownerDisplay(ev) : ""}
         </div>
       </div>
     </div>
@@ -613,8 +637,9 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
   // Operators can create/edit their own appointment entries but can never
   // delete them (not even their own) — only an admin can remove one.
   const canDelete = canEdit && me.role !== "operator";
+  // Who registered a 社内 appointment is only shown to the registrant and admins.
   document.getElementById("formOwner").textContent = ev
-    ? `作成者: ${ownerName(ev.owner)}`
+    ? (canSeeOwner(ev) ? `作成者: ${ownerName(ev.owner)}` : "")
     : `作成者: ${ownerName(me)}`;
 
   // Client/operator have a fixed type (never shown, never chosen). Admins get
@@ -631,7 +656,7 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
   document.getElementById("negotiableRow").hidden = effectiveType !== "personal";
   document.getElementById("f_negotiable").checked = ev ? !!ev.negotiable : false;
 
-  document.getElementById("f_title").value = ev ? ev.title : "";
+  document.getElementById("f_title").value = ev ? ev.title : (me.role === "client" ? "予定あり" : "");
   document.getElementById("f_allday").checked = ev ? ev.all_day : false;
 
   const defaultStart = presetStartTime || "09:00";
