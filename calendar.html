@@ -760,6 +760,21 @@ async function loadSettings() {
   operatorLeadDays = (!error && data) ? data.operator_lead_business_days : 0;
 }
 
+// Live updates: any other user's insert/update/delete on events (or an admin
+// changing app_settings) refreshes what's currently on screen automatically.
+function setupRealtime() {
+  let refreshTimer = null;
+  const debouncedRefresh = () => {
+    clearTimeout(refreshTimer);
+    refreshTimer = setTimeout(refresh, 250);
+  };
+
+  sb.channel("calendar-live")
+    .on("postgres_changes", { event: "*", schema: "public", table: "events" }, debouncedRefresh)
+    .on("postgres_changes", { event: "*", schema: "public", table: "app_settings" }, loadSettings)
+    .subscribe();
+}
+
 (async () => {
   me = await requireApprovedSession();
   if (!me) return;
@@ -768,6 +783,7 @@ async function loadSettings() {
   await loadSettings();
   await loadMiniDots();
   setMode("week");
+  setupRealtime();
 })();
 </script>
 </body>
