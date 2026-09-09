@@ -36,3 +36,17 @@ async function logout() {
   await sb.auth.signOut();
   location.href = "login.html";
 }
+
+// Reflects the admin-configured client name (app_settings.client_name) in the
+// browser tab title and the header's brand text. Safe to call repeatedly
+// (e.g. after a realtime update) — it remembers each page's original brand
+// text the first time it runs, so the name is never appended twice.
+function applyClientBranding(clientName) {
+  const name = (clientName || "").trim();
+  document.title = name ? `${name}様 管理表` : "Calendar";
+
+  const brand = document.querySelector(".brand");
+  if (!brand) return;
+  if (brand.dataset.base === undefined) brand.dataset.base = brand.textContent;
+  brand.textContent = name ? `${brand.dataset.base} ${name}様` : brand.dataset.base;
+}
