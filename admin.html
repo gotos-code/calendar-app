@@ -37,6 +37,13 @@
     <span class="msg" id="settingsMsg" style="display:inline-block; margin-left:10px;"></span>
   </div>
 
+  <div class="settings-card" style="border-color:var(--danger);">
+    <h2 style="color:var(--danger);">危険な操作</h2>
+    <p class="panel-sub" style="margin-bottom:14px;">全ユーザーの予定を一括で完全に削除します(クライアントの切り替え時などに利用)。<b>元に戻せません。</b></p>
+    <button class="btn danger" id="deleteAllBtn">すべての予定を削除</button>
+    <span class="msg" id="deleteAllMsg" style="display:inline-block; margin-left:10px;"></span>
+  </div>
+
   <p style="color:var(--text-muted); font-size:13px;">新規登録されたユーザーの承認・管理者権限の付与/剥奪ができます。</p>
   <table class="admin-table">
     <thead>
@@ -146,6 +153,27 @@ document.getElementById("saveSettingsBtn").addEventListener("click", async () =>
   msg.className = error ? "msg error" : "msg info";
   msg.textContent = error ? "保存に失敗しました: " + error.message : "保存しました。";
   if (!error) applyClientBranding(clientName);
+});
+
+document.getElementById("deleteAllBtn").addEventListener("click", async () => {
+  const msg = document.getElementById("deleteAllMsg");
+  msg.textContent = "";
+
+  if (!confirm("本当に全ユーザーの予定をすべて削除しますか?この操作は元に戻せません。")) return;
+  const typed = prompt('よろしければ確認のため「削除」と入力してください。');
+  if (typed !== "削除") {
+    msg.className = "msg error";
+    msg.textContent = "キャンセルしました(入力内容が一致しませんでした)。";
+    return;
+  }
+
+  const btn = document.getElementById("deleteAllBtn");
+  btn.disabled = true;
+  const { error } = await sb.from("events").delete().neq("id", "00000000-0000-0000-0000-000000000000");
+  btn.disabled = false;
+
+  msg.className = error ? "msg error" : "msg info";
+  msg.textContent = error ? "削除に失敗しました: " + error.message : "すべての予定を削除しました。";
 });
 
 (async () => {
