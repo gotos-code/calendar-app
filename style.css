@@ -10,7 +10,9 @@
   --text: #2A2E36;
   --text-muted: #6B7280;
   --personal: #9AA3AF;
+  --personal-pale: #E4E6E9;
   --appointment: #4C8DFF;
+  --appointment-pale: #DCEAFF;
   --danger: #E15554;
 }
 
@@ -102,6 +104,9 @@ a { color: var(--accent); }
 .msg { font-size: 13px; margin-top: 14px; text-align: center; }
 .msg.error { color: var(--danger); }
 .msg.info { color: var(--text-muted); }
+
+/* Any event with a memo gets this flag, regardless of role/type. */
+.need-check { color: var(--danger); font-weight: 700; margin-left: 4px; }
 
 .switch-link { text-align: center; font-size: 13px; margin-top: 18px; color: var(--text-muted); }
 
@@ -268,6 +273,9 @@ a { color: var(--accent); }
 }
 .chip.personal { background: var(--personal); }
 .chip.appointment { background: var(--appointment); }
+.chip.negotiable { color: var(--text); }
+.chip.personal.negotiable { background: var(--personal-pale); }
+.chip.appointment.negotiable { background: var(--appointment-pale); }
 .chip-more { font-size: 10px; color: var(--text-muted); }
 
 /* Week view (weekdays only, 8:00-21:00 time grid) */
@@ -349,11 +357,18 @@ a { color: var(--accent); }
   line-height: 1.3;
   color: #fff;
   overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 .week-event-block.personal { background: var(--personal); }
 .week-event-block.appointment { background: var(--appointment); }
-.week-event-block .wb-time { font-size: 9px; opacity: 0.85; }
+.week-event-block.negotiable { color: var(--text); }
+.week-event-block.personal.negotiable { background: var(--personal-pale); }
+.week-event-block.appointment.negotiable { background: var(--appointment-pale); }
+/* Time and title share a single line so short (e.g. 30-min) blocks never
+   clip their text — they truncate with an ellipsis instead. */
+.week-event-block .wb-time { font-size: 9px; opacity: 0.85; margin-right: 3px; }
 
 /* All-day events have no specific time, so they render as a full-height
    (8:00-21:00) band inside the day's own column instead of a separate row. */
@@ -367,8 +382,10 @@ a { color: var(--accent); }
   cursor: pointer;
   z-index: 1;
 }
-.week-allday-band.personal { background: rgba(76, 141, 255, 0.14); border-left-color: var(--personal); }
-.week-allday-band.appointment { background: rgba(255, 159, 69, 0.16); border-left-color: var(--appointment); }
+.week-allday-band.personal { background: rgba(154, 163, 175, 0.16); border-left-color: var(--personal); }
+.week-allday-band.appointment { background: rgba(76, 141, 255, 0.14); border-left-color: var(--appointment); }
+.week-allday-band.negotiable.personal { background: var(--personal-pale); }
+.week-allday-band.negotiable.appointment { background: var(--appointment-pale); }
 .week-allday-band .wab-label {
   display: block;
   margin: 6px 6px 0;
