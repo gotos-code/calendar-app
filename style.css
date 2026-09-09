@@ -107,6 +107,8 @@ a { color: var(--accent); }
 
 /* Any event with a memo gets this flag, regardless of role/type. */
 .need-check { color: var(--danger); font-weight: 700; margin-left: 4px; }
+/* Shown whenever "相談可" is on. */
+.negotiable-flag { color: var(--accent); font-weight: 700; margin-left: 4px; }
 
 .switch-link { text-align: center; font-size: 13px; margin-top: 18px; color: var(--text-muted); }
 
