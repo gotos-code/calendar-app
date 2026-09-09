@@ -35,6 +35,7 @@ create policy "own profile update" on profiles for update using (auth.uid() = id
 create policy "admin select all profiles" on profiles for select using (is_admin(auth.uid()));
 create policy "admin update all profiles" on profiles for update using (is_admin(auth.uid()));
 create policy "approved select all profiles" on profiles for select using (is_approved(auth.uid()));
+create policy "admin delete profiles" on profiles for delete using (is_admin(auth.uid()));
 
 create or replace function handle_new_user() returns trigger
 language plpgsql security definer as $$
