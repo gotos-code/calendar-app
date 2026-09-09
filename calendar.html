@@ -113,6 +113,10 @@
         <input type="checkbox" id="f_allday">
         <label for="f_allday">終日</label>
       </div>
+      <div class="checkbox-row" id="negotiableRow">
+        <input type="checkbox" id="f_negotiable">
+        <label for="f_negotiable">相談可</label>
+      </div>
       <div class="field">
         <label for="f_start_date">開始日</label>
         <input type="date" id="f_start_date" required>
@@ -213,6 +217,11 @@ function ownerName(p) {
 function fmtTime(iso) {
   const d = new Date(iso);
   return `${String(d.getHours()).padStart(2,"0")}:${String(d.getMinutes()).padStart(2,"0")}`;
+}
+
+// A memo on any event (any role/type) gets a shared "要確認" flag.
+function memoFlag(ev) {
+  return ev.memo && ev.memo.trim() ? '<span class="need-check">要確認</span>' : "";
 }
 
 async function refresh() {
@@ -318,9 +327,9 @@ function renderMonth() {
       <div class="day-cell ${inMonth ? "" : "other-month"} ${dateStr === todayStr ? "today" : ""}" data-date="${dateStr}">
         <div class="day-num">${d.getDate()}</div>
         ${shown.map(ev => `
-          <div class="chip ${ev.event_type}" data-event-id="${ev.id}"
+          <div class="chip ${ev.event_type} ${ev.negotiable ? "negotiable" : ""}" data-event-id="${ev.id}"
                title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
-            ${ev.all_day ? "" : fmtTime(ev.start_at) + " "}${ev.title}
+            ${ev.all_day ? "" : fmtTime(ev.start_at) + " "}${ev.title}${memoFlag(ev)}
           </div>
         `).join("")}
         ${extra > 0 ? `<div class="chip-more">+${extra}件</div>` : ""}
@@ -372,10 +381,11 @@ function renderWeekEventBlock(ev) {
   const left = ev._col * width;
 
   return `
-    <div class="week-event-block ${ev.event_type}" data-event-id="${ev.id}"
+    <div class="week-event-block ${ev.event_type} ${ev.negotiable ? "negotiable" : ""}" data-event-id="${ev.id}"
          style="top:${top}px; height:${height}px; width:calc(${width}% - 3px); left:calc(${left}% + 2px);"
          title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
-      <div class="wb-time">${fmtTime(ev.start_at)}${ev.end_at ? "-" + fmtTime(ev.end_at) : ""}</div>${ev.title}
+      <span class="wb-time">${fmtTime(ev.start_at)}${ev.end_at ? "-" + fmtTime(ev.end_at) : ""}</span>
+      <span class="wb-title">${ev.title}${memoFlag(ev)}</span>
     </div>
   `;
 }
@@ -424,10 +434,10 @@ function renderAllDayBand(ev, index, total) {
   const width = 100 / total;
   const left = index * width;
   return `
-    <div class="week-allday-band ${ev.event_type}" data-event-id="${ev.id}"
+    <div class="week-allday-band ${ev.event_type} ${ev.negotiable ? "negotiable" : ""}" data-event-id="${ev.id}"
          style="left:calc(${left}% + 2px); width:calc(${width}% - 4px);"
          title="${ownerName(ev.owner)}${ev.owner?.company_name ? " (" + ev.owner.company_name + ")" : ""} - ${ev.title}">
-      <span class="wab-label">${ev.title}</span>
+      <span class="wab-label">${ev.title}${memoFlag(ev)}</span>
     </div>
   `;
 }
@@ -524,9 +534,9 @@ function openDayPanel(dateStr) {
   const dayEvents = eventsOnDay(dateStr);
   document.getElementById("dayEventList").innerHTML = dayEvents.length ? dayEvents.map(ev => `
     <div class="event-row" data-event-id="${ev.id}">
-      <span class="badge ${ev.event_type}">${ev.event_type === "personal" ? "個人" : "アポ"}</span>
+      <span class="badge ${ev.event_type}">${ev.event_type === "personal" ? "クライアント" : "社内"}</span>
       <div class="ev-main">
-        <div class="ev-title">${ev.title}</div>
+        <div class="ev-title">${ev.title}${memoFlag(ev)}</div>
         <div class="ev-meta">
           ${ev.all_day ? "終日" : fmtTime(ev.start_at) + (ev.end_at ? " - " + fmtTime(ev.end_at) : "")}
           ・${ownerName(ev.owner)}${ev.owner?.company_name ? "(" + ev.owner.company_name + ")" : ""}
@@ -585,6 +595,11 @@ function openFormPanel(ev, dateStr, presetStartTime, presetEndTime) {
   document.getElementById("titleLabel").textContent = effectiveType === "appointment" ? "会社名" : "タイトル";
   document.getElementById("f_title").required = me.role !== "client";
 
+  // "相談可" only makes sense for personal/client-type entries (gray), not
+  // confirmed 社内/appointment ones.
+  document.getElementById("negotiableRow").hidden = effectiveType !== "personal";
+  document.getElementById("f_negotiable").checked = ev ? !!ev.negotiable : false;
+
   document.getElementById("f_title").value = ev ? ev.title : "";
   document.getElementById("f_allday").checked = ev ? ev.all_day : false;
 
@@ -624,6 +639,7 @@ document.getElementById("f_allday").addEventListener("change", toggleAllDayField
 document.getElementById("typeField").addEventListener("change", () => {
   const val = document.querySelector('input[name="event_type"]:checked').value;
   document.getElementById("titleLabel").textContent = val === "appointment" ? "会社名" : "タイトル";
+  document.getElementById("negotiableRow").hidden = val !== "personal";
 });
 
 document.getElementById("eventForm").addEventListener("submit", async (e) => {
@@ -642,13 +658,15 @@ document.getElementById("eventForm").addEventListener("submit", async (e) => {
   let title = document.getElementById("f_title").value.trim();
   if (!title && me.role === "client") title = "予定あり";
 
+  const eventType = document.querySelector('input[name="event_type"]:checked').value;
   const payload = {
     title,
-    event_type: document.querySelector('input[name="event_type"]:checked').value,
+    event_type: eventType,
     all_day: allDay,
     start_at,
     end_at,
     memo: document.getElementById("f_memo").value.trim() || null,
+    negotiable: eventType === "personal" && document.getElementById("f_negotiable").checked,
   };
 
   let error;
