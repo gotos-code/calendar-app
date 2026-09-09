@@ -18,6 +18,17 @@
   </div>
 </div>
 <div class="app-body">
+  <div class="settings-card">
+    <h2>入力制限の設定</h2>
+    <p class="panel-sub" style="margin-bottom:14px;">オペレーターは、本日からここで設定した営業日数の間、予定を入力できなくなります。</p>
+    <div class="field" style="max-width:220px;">
+      <label for="s_lead_days">本日から入力不可にする営業日数</label>
+      <input type="number" id="s_lead_days" min="0" step="1">
+    </div>
+    <button class="btn" id="saveSettingsBtn">保存</button>
+    <span class="msg" id="settingsMsg" style="display:inline-block; margin-left:10px;"></span>
+  </div>
+
   <p style="color:var(--text-muted); font-size:13px;">新規登録されたユーザーの承認・管理者権限の付与/剥奪ができます。</p>
   <table class="admin-table">
     <thead>
@@ -103,6 +114,26 @@ document.getElementById("rows").addEventListener("change", async (e) => {
   await loadRows();
 });
 
+async function loadSettings() {
+  const { data, error } = await sb.from("app_settings").select("operator_lead_business_days").eq("id", 1).single();
+  if (!error && data) {
+    document.getElementById("s_lead_days").value = data.operator_lead_business_days;
+  }
+}
+
+document.getElementById("saveSettingsBtn").addEventListener("click", async () => {
+  const msg = document.getElementById("settingsMsg");
+  const days = parseInt(document.getElementById("s_lead_days").value, 10);
+  if (isNaN(days) || days < 0) {
+    msg.className = "msg error";
+    msg.textContent = "0以上の整数を入力してください。";
+    return;
+  }
+  const { error } = await sb.from("app_settings").update({ operator_lead_business_days: days }).eq("id", 1);
+  msg.className = error ? "msg error" : "msg info";
+  msg.textContent = error ? "保存に失敗しました: " + error.message : "保存しました。";
+});
+
 (async () => {
   me = await requireApprovedSession();
   if (!me) return;
@@ -113,6 +144,7 @@ document.getElementById("rows").addEventListener("change", async (e) => {
   }
   document.getElementById("whoami").textContent =
     [me.last_name, me.first_name].filter(Boolean).join(" ") || me.email;
+  await loadSettings();
   await loadRows();
 })();
 </script>
