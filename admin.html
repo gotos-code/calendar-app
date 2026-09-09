@@ -20,12 +20,19 @@
 </div>
 <div class="app-body">
   <div class="settings-card">
-    <h2>入力制限の設定</h2>
-    <p class="panel-sub" style="margin-bottom:14px;">オペレーターは、本日からここで設定した営業日数の間、予定を入力できなくなります。</p>
+    <h2>全体設定</h2>
+    <div class="field" style="max-width:280px;">
+      <label for="s_client_name">クライアント名</label>
+      <input type="text" id="s_client_name" placeholder="例: サンプル株式会社">
+    </div>
+    <p class="panel-sub" style="margin:-6px 0 14px;">タブのタイトルが「(クライアント名)様 管理表」に、ヘッダーに「(クライアント名)様」が表示されます。</p>
+
     <div class="field" style="max-width:220px;">
       <label for="s_lead_days">本日から入力不可にする営業日数</label>
       <input type="number" id="s_lead_days" min="0" step="1">
     </div>
+    <p class="panel-sub" style="margin:-6px 0 14px;">オペレーターは、本日からここで設定した営業日数の間、予定を入力できなくなります。</p>
+
     <button class="btn" id="saveSettingsBtn">保存</button>
     <span class="msg" id="settingsMsg" style="display:inline-block; margin-left:10px;"></span>
   </div>
@@ -116,9 +123,11 @@ document.getElementById("rows").addEventListener("change", async (e) => {
 });
 
 async function loadSettings() {
-  const { data, error } = await sb.from("app_settings").select("operator_lead_business_days").eq("id", 1).single();
+  const { data, error } = await sb.from("app_settings").select("client_name, operator_lead_business_days").eq("id", 1).single();
   if (!error && data) {
+    document.getElementById("s_client_name").value = data.client_name || "";
     document.getElementById("s_lead_days").value = data.operator_lead_business_days;
+    applyClientBranding(data.client_name);
   }
 }
 
@@ -130,9 +139,13 @@ document.getElementById("saveSettingsBtn").addEventListener("click", async () =>
     msg.textContent = "0以上の整数を入力してください。";
     return;
   }
-  const { error } = await sb.from("app_settings").update({ operator_lead_business_days: days }).eq("id", 1);
+  const clientName = document.getElementById("s_client_name").value.trim();
+  const { error } = await sb.from("app_settings")
+    .update({ client_name: clientName, operator_lead_business_days: days })
+    .eq("id", 1);
   msg.className = error ? "msg error" : "msg info";
   msg.textContent = error ? "保存に失敗しました: " + error.message : "保存しました。";
+  if (!error) applyClientBranding(clientName);
 });
 
 (async () => {
