@@ -324,6 +324,14 @@ a { color: var(--accent); }
   user-select: none;
 }
 .week-day-col.today { background-color: #FAFBFF; }
+.week-day-col.blocked {
+  cursor: not-allowed;
+  background-image: repeating-linear-gradient(
+    45deg,
+    rgba(154, 163, 175, 0.08), rgba(154, 163, 175, 0.08) 6px,
+    transparent 6px, transparent 12px
+  );
+}
 .hour-line {
   position: absolute;
   left: 0; right: 0;
@@ -466,6 +474,15 @@ a { color: var(--accent); }
 .checkbox-row { display: flex; align-items: center; gap: 8px; margin-bottom: 16px; }
 .checkbox-row input { width: auto; }
 .checkbox-row label { margin: 0; font-size: 13px; color: var(--text); }
+
+.settings-card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 20px;
+}
+.settings-card h2 { margin: 0 0 6px; font-size: 16px; }
 
 table.admin-table { width: 100%; border-collapse: collapse; background: #fff; border-radius: 10px; overflow: hidden; }
 table.admin-table th, table.admin-table td {
